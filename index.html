@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VIBRAMOT — Vibration Fault Diagnosis for Every Student</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js';document.head.appendChild(s);"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+*{box-sizing:border-box;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; min-height:100%; background:var(--bg); color:var(--text);
+  font-family:var(--mono);
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+.wrap{max-width:1180px; margin:0 auto; padding:22px 18px 40px;}
+header{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  border-bottom:1px solid var(--border); padding-bottom:14px; margin-bottom:18px;}
+header h1{font-size:17px; letter-spacing:.04em; margin:0; font-weight:600; color:var(--text);}
+header h1 span{color:var(--green);}
+header p{margin:4px 0 0; color:var(--muted); font-size:12px;}
+.grid{display:grid; grid-template-columns:230px 1fr 230px; gap:16px;}
+@media (max-width:900px){.grid{grid-template-columns:1fr;}}
+.panel{background:var(--panel); border:1px solid var(--border); border-radius:3px; padding:14px;}
+.panel + .panel{margin-top:14px;}
+.label{font-size:10px; letter-spacing:.08em; color:var(--dim); margin-bottom:6px; display:block;}
+.row{margin-bottom:14px;}
+.row:last-child{margin-bottom:0;}
+select,input[type=range]{width:100%;}
+select{background:var(--panel2); color:var(--text); border:1px solid var(--border-hi); border-radius:2px;
+  padding:7px 8px; font-family:var(--mono); font-size:12.5px;}
+input[type=range]{accent-color:var(--green); height:18px;}
+.val{color:var(--green); font-size:12px; float:right;}
+.scope{background:var(--panel2); border:1px solid var(--border); border-radius:3px; padding:10px 12px 4px; margin-bottom:14px;}
+.scope h2{font-size:10.5px; letter-spacing:.08em; color:var(--muted); margin:0 0 6px; font-weight:500;}
+.chart-box{position:relative; width:100%; height:150px;}
+.status{text-align:center; padding:18px 10px; border:1px solid var(--border); border-radius:3px; margin-bottom:14px;}
+.status .dot{width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:7px;}
+.status.ok{background:rgba(127,216,88,.07);} .status.ok .dot{background:var(--green); box-shadow:0 0 8px var(--green);}
+.status.fault{background:rgba(255,107,94,.08);} .status.fault .dot{background:var(--red); box-shadow:0 0 8px var(--red);}
+.status .line1{font-size:13px; font-weight:600; letter-spacing:.03em;}
+.status.ok .line1{color:var(--green);} .status.fault .line1{color:var(--red);}
+.status .line2{font-size:11px; color:var(--muted); margin-top:5px;}
+.readout{display:flex; justify-content:space-between; font-size:11.5px; padding:6px 0; border-bottom:1px solid var(--border);}
+.readout:last-child{border-bottom:none;}
+.readout span:first-child{color:var(--muted);}
+.readout span:last-child{color:var(--text);}
+.note{font-size:10.5px; color:var(--dim); line-height:1.5; margin-top:10px;}
+footer{margin-top:22px; font-size:10.5px; color:var(--dim); border-top:1px solid var(--border); padding-top:12px; line-height:1.6;}
+.intro{font-size:11.5px; color:var(--muted); line-height:1.6; margin-bottom:18px; max-width:760px;}
+.intro b{color:var(--green);}
+.rig{background:var(--panel2); border:1px solid var(--border); border-radius:3px; padding:10px; margin-bottom:10px;}
+.rig svg{width:100%; height:auto; display:block;}
+.motor-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:4px;}
+.motor-card{background:var(--panel2); border:1px solid var(--border-hi); border-radius:2px; padding:8px 6px;
+  color:var(--muted); font-family:var(--mono); font-size:10.5px; cursor:pointer; text-align:center;}
+.motor-card:hover{border-color:var(--green-dim);}
+.motor-card.active{border-color:var(--green); color:var(--green); background:rgba(127,216,88,.08);}
+.run-btn{width:100%; margin-top:14px; padding:11px; background:var(--green-dim); color:#0d1310; border:none;
+  border-radius:2px; font-family:var(--mono); font-size:12.5px; font-weight:700; letter-spacing:.04em; cursor:pointer;}
+.run-btn:hover{background:var(--green);}
+.chart-box{overflow:hidden;}
+.ph{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--dim);
+  font-size:11px; text-align:center; padding:10px;}
+.status.idle{background:rgba(255,255,255,.02);} .status.idle .dot{background:var(--dim);} .status.idle .line1{color:var(--muted);}
+
+:root{--sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+--bg:#fff;--soft:#f5f8fc;--panel:#fff;--panel2:#f8fafc;--border:#e2e8f0;--border-hi:#cbd5e1;--text:#0f172a;--muted:#475569;--dim:#64748b;
+--green:#2563eb;--green-dim:#1d4ed8;--brand:#2563eb;--navy:#0b1f4d;--amber:#ea580c;--red:#dc2626;--ok:#16a34a;color-scheme:light;}
+html{scroll-behavior:smooth;} body{padding-top:0!important;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.5;}
+.wrap{max-width:none;padding:0;margin:0;}
+.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding-top:env(safe-area-inset-top,0px);}
+.top .in{max-width:1120px;margin:0 auto;display:flex;align-items:center;gap:4px;padding:12px 20px;flex-wrap:wrap;}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px;letter-spacing:.02em;margin-right:auto;cursor:pointer;color:var(--navy);}
+.logo i{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2563eb,#0ea5e9);display:grid;place-items:center;}
+.logo i svg{width:18px;height:18px;}
+.top a{font-size:13.5px;font-weight:500;color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer;}
+.top a:hover{background:var(--soft);color:var(--text);} .top a.on{color:var(--brand);background:#eaf1ff;}
+.btn{display:inline-block;font-family:var(--sans);font-weight:600;font-size:14px;padding:12px 22px;border-radius:10px;cursor:pointer;border:1px solid transparent;background:var(--brand);color:#fff;transition:.15s;}
+.btn:hover{background:var(--green-dim);transform:translateY(-1px);box-shadow:0 6px 16px rgba(37,99,235,.25);}
+.btn.ghost{background:#fff;color:var(--navy);border-color:var(--border-hi);} .btn.ghost:hover{background:var(--soft);box-shadow:none;}
+.btn.sm{padding:8px 16px;font-size:13px;}
+.sx{max-width:1120px;margin:0 auto;padding:64px 20px;} .sx.tight{padding:40px 20px;}
+.band{background:var(--soft);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.dark{background:var(--navy);color:#e6edff;} .dark .lead,.dark p{color:#b9c7ee;} .dark h2{color:#fff;}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--brand);text-transform:uppercase;margin-bottom:10px;}
+h1.big{font-size:clamp(32px,5vw,52px);line-height:1.1;margin:0 0 18px;letter-spacing:-.02em;color:var(--navy);font-weight:800;}
+h1.big span{background:linear-gradient(90deg,#2563eb,#0ea5e9);-webkit-background-clip:text;background-clip:text;color:transparent;}
+h2.h{font-size:clamp(24px,3.2vw,34px);margin:0 0 12px;letter-spacing:-.01em;color:var(--navy);font-weight:700;}
+.lead{font-size:16.5px;color:var(--muted);max-width:620px;margin:0 0 24px;line-height:1.65;}
+.hero{background:radial-gradient(900px 400px at 85% -10%,#dbe9ff 0,transparent 60%),linear-gradient(#fff,#f5f8fc);}
+.hero .sx{display:grid;grid-template-columns:1.05fr 1fr;gap:40px;align-items:center;padding-top:56px;padding-bottom:56px;}
+@media(max-width:860px){.hero .sx{grid-template-columns:1fr;}}
+.pill{display:inline-flex;gap:8px;align-items:center;background:#eaf1ff;color:var(--brand);font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:99px;margin-bottom:18px;}
+.pill b{width:7px;height:7px;border-radius:50%;background:var(--ok);}
+.demo{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 20px 50px rgba(15,23,42,.10);padding:16px;}
+.demo .bar{display:flex;gap:6px;margin-bottom:10px;align-items:center;font-size:11.5px;color:var(--dim);}
+.demo .bar i{width:10px;height:10px;border-radius:50%;background:#e2e8f0;display:inline-block;}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px;}
+.chip{font-family:var(--sans);font-size:12.5px;font-weight:500;padding:6px 12px;border-radius:99px;border:1px solid var(--border-hi);background:#fff;color:var(--muted);cursor:pointer;transition:.15s;}
+.chip:hover{border-color:var(--brand);color:var(--brand);} .chip.on{background:var(--brand);border-color:var(--brand);color:#fff;}
+.demo canvas{width:100%;height:170px;display:block;background:var(--panel2);border-radius:10px;}
+.badge{display:inline-flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;font-weight:600;padding:7px 12px;border-radius:8px;}
+.badge.ok{background:#dcfce7;color:#166534;} .badge.bad{background:#fee2e2;color:#991b1b;}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;text-align:center;}
+.stat b{display:block;font-size:34px;font-weight:800;color:var(--navy);letter-spacing:-.02em;} .stat span{font-size:13px;color:var(--dim);}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;}
+.fc{background:#fff;border:1px solid var(--border);border-radius:14px;padding:22px;transition:.2s;}
+.fc:hover{transform:translateY(-4px);box-shadow:0 14px 32px rgba(15,23,42,.09);border-color:#bfd3ff;}
+.fc .ic{width:42px;height:42px;border-radius:10px;background:#eaf1ff;display:grid;place-items:center;font-size:20px;margin-bottom:14px;}
+.fc h3{margin:0 0 6px;font-size:17px;color:var(--navy);} .fc p{margin:0;color:var(--muted);font-size:14px;line-height:1.6;}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.tab{font-family:var(--sans);font-size:14px;font-weight:600;padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--muted);cursor:pointer;}
+.tab.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+.tp{display:none;background:#fff;border:1px solid var(--border);border-radius:14px;padding:26px;} .tp.on{display:block;}
+.tp h3{margin:0 0 8px;color:var(--navy);font-size:19px;} .tp p{margin:0;color:var(--muted);line-height:1.7;max-width:720px;} .tp ul{color:var(--muted);line-height:1.8;margin:10px 0 0;padding-left:20px;}
+.faq details{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:10px;}
+.faq summary{font-weight:600;cursor:pointer;color:var(--navy);} .faq details p{color:var(--muted);margin:10px 0 2px;line-height:1.65;font-size:14.5px;}
+.cta-band{background:linear-gradient(135deg,#1d4ed8,#0ea5e9);color:#fff;border-radius:20px;padding:44px 28px;text-align:center;}
+.cta-band h2{color:#fff;margin:0 0 10px;font-size:28px;} .cta-band p{color:#e0edff;margin:0 auto 22px;max-width:520px;}
+.cta-band .btn{background:#fff;color:var(--brand);} 
+.ph-hd{background:var(--soft);border-bottom:1px solid var(--border);} .ph-hd .sx{padding-top:44px;padding-bottom:36px;}
+table.t{border-collapse:collapse;width:100%;font-size:14px;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+table.t th{background:var(--soft);color:var(--navy);text-align:left;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:12px 14px;border:0;border-bottom:1px solid var(--border);}
+table.t td{padding:12px 14px;border:0;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top;} table.t td:first-child{color:var(--navy);font-weight:600;}
+.tw{overflow-x:auto;border-radius:12px;} table.t{min-width:600px;}
+.lab{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:8px;}
+.lab .hd{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;} .lab h3{margin:0;font-size:16px;color:var(--navy);}
+.tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;} .tag.c{background:#dcfce7;color:#166534;} .tag.p{background:#fef3c7;color:#92400e;}
+.lab .dp{font-size:12px;font-weight:600;color:var(--brand);text-transform:uppercase;letter-spacing:.06em;}
+.lab dl{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6;} .lab dt{font-weight:600;color:var(--text);display:inline;} .lab dd{display:inline;margin:0;} .lab dd:after{content:"";display:block;margin-bottom:4px;}
+.tm{text-align:center;} .av{width:76px;height:76px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;font-size:26px;font-weight:800;color:#fff;background:linear-gradient(135deg,#2563eb,#0ea5e9);}
+.tl{border-left:2px solid var(--border-hi);margin-left:8px;padding-left:22px;} .tl div{position:relative;margin-bottom:18px;} .tl div:before{content:"";position:absolute;left:-29px;top:5px;width:12px;height:12px;border-radius:50%;background:var(--brand);border:3px solid #fff;box-shadow:0 0 0 1px var(--brand);}
+.tl b{color:var(--navy);} .tl span{display:block;color:var(--muted);font-size:14px;}
+.rv{opacity:0;transform:translateY(16px);transition:opacity .5s,transform .5s;} .rv.in{opacity:1;transform:none;}
+footer.site{background:var(--navy);color:#b9c7ee;margin:0;border:0;padding:0;font-size:14px;} footer.site .in{max-width:1120px;margin:0 auto;padding:44px 20px 26px;display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:30px;}
+@media(max-width:760px){footer.site .in{grid-template-columns:1fr;}}
+footer.site h4{color:#fff;margin:0 0 10px;font-size:14px;} footer.site a{display:block;color:#b9c7ee;padding:3px 0;cursor:pointer;} footer.site a:hover{color:#fff;}
+footer.site .cp{border-top:1px solid #243a73;padding:14px 20px;text-align:center;font-size:12.5px;color:#8fa3d8;}
+.dbwrap{max-width:1120px;margin:0 auto;padding:28px 20px 56px;}
+.presets{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;} .presets b{font-size:13px;color:var(--navy);margin-right:4px;}
+/* dashboard restyle */
+.panel,.scope,.rig{background:#fff;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.04);} .scope{padding:12px 14px 6px;}
+.label{font-size:11px;color:var(--dim);font-weight:600;letter-spacing:.06em;} .scope h2{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.05em;}
+select{background:#fff;color:var(--text);border-radius:8px;font-family:var(--sans);} .val,.readout span:last-child,.note,#specs{font-family:var(--mono);}
+.val{color:var(--brand);font-weight:600;} header h1{font-size:26px;color:var(--navy);font-weight:800;} header h1 span{color:var(--brand);} header p{color:var(--muted);}
+.intro{color:var(--muted);font-size:14px;} .intro b{color:var(--brand);}
+.motor-card{border-radius:8px;font-family:var(--sans);font-size:12px;font-weight:500;background:#fff;color:var(--muted);} .motor-card:hover{border-color:var(--brand);} .motor-card.active{border-color:var(--brand);color:var(--brand);background:#eaf1ff;}
+.run-btn{background:var(--brand);color:#fff;border-radius:10px;font-family:var(--sans);font-size:14px;padding:13px;} .run-btn:hover{background:var(--green-dim);}
+.status{border-radius:12px;background:#fff;} .status.ok{background:#f0fdf4;border-color:#bbf7d0;} .status.ok .line1{color:var(--ok);} .status.ok .dot{background:var(--ok);box-shadow:0 0 8px var(--ok);}
+.status.fault{background:#fef2f2;border-color:#fecaca;} .status.fault .line1{color:var(--red);} .status.idle .line1{color:var(--dim);}
+.readout{border-bottom-color:var(--border);} .note{color:var(--dim);} .ph{color:var(--dim);}
+.rig svg text{font-family:var(--mono);} 
+
+.view{display:none;} .view.on{display:block;}
+.hid{display:none!important}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-top:10px}
+.cand{display:grid;grid-template-columns:1.5fr 1fr .9fr;gap:6px;font-size:11.5px;padding:7px 0;border-bottom:1px solid var(--border);color:var(--muted)}
+.cand:last-child{border-bottom:0} .cand.hit{color:var(--red);font-weight:600} .cand span:not(:first-child){text-align:right;font-family:var(--mono)}
+.ev td,.ev th{text-align:center} .ev td:first-child,.ev th:first-child{text-align:left} table.t tr.sh td{background:var(--soft);font-weight:700;color:var(--navy)}
+input:disabled,select:disabled{opacity:.55;cursor:not-allowed}
+.pl3d{position:absolute;transform:translate(-50%,-50%);font:600 11px Inter,system-ui,sans-serif;background:#fff;border:1px solid var(--brand);color:var(--brand);padding:2px 8px;border-radius:99px;cursor:pointer;white-space:nowrap}
+.pl3d.on{background:var(--brand);color:#fff}
+.fxp{background:#fff;border:1px solid var(--border);border-radius:14px;padding:24px}.fxp h3{margin:0 0 4px;color:var(--navy);font-size:20px}.fxp .sub2{color:var(--muted);margin:0 0 14px;font-size:14px}
+.fxg{display:grid;grid-template-columns:1fr 1.3fr;gap:26px}@media(max-width:820px){.fxg{grid-template-columns:1fr}#lvGrid,#pinGrid{grid-template-columns:1fr!important}}
+.fxp h4{margin:14px 0 6px;color:var(--navy);font-size:14px}.fxp h4:first-child{margin-top:0}.fxp ul,.fxp ol{margin:0;padding-left:20px;color:var(--muted);line-height:1.7;font-size:14px}.fxp p{margin:0;color:var(--muted);font-size:14px;line-height:1.65}
+</style></head>
+<body>
+<div class="wrap">
+<div class="top"><div class="in"><div class="logo" data-go="home"><i><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M2 12h3l2-6 3 12 3-9 2 3h7"/></svg></i>VIBRAMOT</div>
+<a data-go="home">Home</a><a data-go="dashboard">Dashboard</a><a data-go="iot">IoT Live</a><a data-go="learn">Learn</a><a data-go="eval">Evaluation</a><a data-go="labs">Labs</a><a data-go="about">About us</a>
+<span class="btn sm" data-go="dashboard" style="margin-left:8px">Launch</span></div></div>
+<section class="view" id="v-home">
+<div class="hero"><div class="sx">
+  <div class="rv">
+    <div class="pill"><b></b> Free · Browser-based · No hardware needed</div>
+    <h1 class="big">Vibration-Based <span>Predictive Maintenance</span> Simulator</h1>
+    <p class="lead">VIBRAMOT lets students who cannot access a vibration or motor test rig practise real fault diagnosis: place a motor, inject a fault, watch it in the animated motor cutaway, and read the FFT spectrum to find what is wrong.</p>
+    <span class="btn" data-go="dashboard">Launch the simulator →</span>
+  </div>
+  <div class="demo rv"><div class="bar"><i></i><i></i><i></i>&nbsp; drag to rotate</div>
+    <canvas id="m3d" style="height:340px;background:transparent;touch-action:pan-y;cursor:grab"></canvas>
+    <div class="note" id="pInfo" style="margin:6px 0 8px;line-height:1.55"></div>
+    <label class="chip" style="display:inline-block"><input type="checkbox" id="m3dAuto" checked> Auto-rotate</label> <button class="chip" id="m3dReset">Reset view</button></div>
+</div></div>
+<div class="band"><div class="sx"><div class="eyebrow">Why VIBRAMOT</div><h2 class="h">Built for students without lab access</h2>
+<p class="lead">Condition monitoring is a core skill, yet accelerometers, rigs and analysers are out of reach for many students. VIBRAMOT replaces that barrier with a browser tab.</p>
+<div class="g3">
+<div class="fc rv"><div class="ic">🧪</div><h3>Hands-on, not just theory</h3><p>Change speed, severity and noise and watch the spectrum respond instantly, the loop a physical lab provides.</p></div>
+<div class="fc rv"><div class="ic">📈</div><h3>Explainable diagnosis</h3><p>See the expected fault frequency, the measured peak and the threshold, so every result can be checked by hand.</p></div>
+<div class="fc rv"><div class="ic">🌐</div><h3>Nothing to install</h3><p>Runs entirely in the browser on a laptop or phone. No account, no server, no cost.</p></div>
+<div class="fc rv"><div class="ic">📚</div><h3>Aligned to the syllabus</h3><p>Mapped to real electrical-machines and automotive-electrical lab courses, including the accelerometer-on-induction-motor practical.</p></div>
+<div class="fc rv"><div class="ic">🔬</div><h3>Verified maths</h3><p>The FFT was cross-checked against numpy and agrees to about 5×10⁻¹⁵.</p></div>
+<div class="fc rv"><div class="ic">📡</div><h3>IoT live monitoring</h3><p>Connect a motor fitted with an ESP32 and accelerometer over USB or MQTT. The page reads speed and sampling rate from the device and diagnoses the fault with no typing.</p></div>
+<div class="fc rv"><div class="ic">🎬</div><h3>See the fault move</h3><p>An animated cutaway shows the rotor, coupling and bearing with the fault in action, side by side with its spectrum peak.</p></div>
+<div class="fc rv"><div class="ic">🛠️</div><h3>Maintenance guidance</h3><p>Every fault comes with its usual cause and the recommended action, closing the loop from diagnosis to predictive maintenance.</p></div>
+<div class="fc rv"><div class="ic">🎯</div><h3>Challenge mode</h3><p>A hidden fault is set, you diagnose it from the spectrum, and your score is compared with the detector.</p></div>
+<div class="fc rv"><div class="ic">🔗</div><h3>Complete diagnostic chain</h3><p>Covers machine, vibration, signal processing, fault detection and predictive maintenance in a single workflow.</p></div></div></div></div>
+<div class="sx"><div class="eyebrow">How it works</div><h2 class="h">From motor to diagnosis in four steps</h2>
+<div class="tabs" id="hwTabs"><button class="tab on" data-t="0">1 · Place</button><button class="tab" data-t="1">2 · Configure</button><button class="tab" data-t="2">3 · Run</button><button class="tab" data-t="3">4 · Diagnose</button></div>
+<div class="tp on" data-t="0"><h3>Place a motor on the test rig</h3><p>Choose a 3-phase induction, DC shunt, synchronous or BLDC motor. It is mounted on a virtual rig with an accelerometer on the housing, like the real setup.</p></div>
+<div class="tp" data-t="1"><h3>Set speed, fault and severity</h3><p>Pick a healthy motor or inject imbalance, misalignment, or an outer-race, inner-race or rolling-element bearing defect.</p><ul><li>Shaft speed 300 to 3600 RPM</li><li>Fault severity and noise floor</li><li>Bearing geometry: balls N, d/D ratio, contact angle</li></ul></div>
+<div class="tp" data-t="2"><h3>Run the analysis</h3><p>The simulator generates the accelerometer signal at 4000 Hz, applies a Hann window and computes a 2048-point radix-2 FFT, all in your browser.</p></div>
+<div class="tp" data-t="3"><h3>Read the result</h3><p>The status shows Normal or the detected fault. The readout lists shaft frequency, expected fault frequency, peak amplitude and threshold so you can see why.</p></div>
+</div>
+<div class="band"><div class="sx faq"><div class="eyebrow">FAQ</div><h2 class="h">Common questions</h2>
+<details><summary>Do I need any hardware or software?</summary><p>No. VIBRAMOT runs in a modern browser with an internet connection. Nothing is installed.</p></details>
+<details><summary>Where do the signals come from?</summary><p>Signals are generated from the standard fault-frequency formulas, so every peak can be checked by hand and every run is repeatable. Students learn the diagnostic method here and carry it to real machines.</p></details>
+<details><summary>Does the motor type change the signal?</summary><p>Motor type sets the rig and label. All motors share one vibration model, so faults can be compared on equal terms across machines.</p></details>
+<details><summary>Which faults can it diagnose?</summary><p>Rotor imbalance, shaft misalignment, and bearing outer-race, inner-race and rolling-element defects, one fault at a time.</p></details></div></div>
+<div class="sx"><div class="cta-band rv"><h2>Ready to run your first diagnosis?</h2><p>Open the dashboard and try the preset scenarios.</p><span class="btn" data-go="dashboard">Open dashboard →</span></div></div>
+</section><section class="view" id="v-dashboard"><div class="dbwrap">
+<header><div><h1>Simulator <span>Dashboard</span></h1><p>Place a motor, set parameters, run the analysis.</p></div><p id="specs" style="font-size:11px;"></p></header>
+<div class="presets" id="modeRow"><b>Mode:</b><button class="chip on" data-mode="explore">Explore</button><button class="chip" data-mode="challenge">Challenge: find the hidden fault</button></div>
+<div class="presets" id="presetRow"><b>Quick scenarios:</b><button class="chip" data-p="none,1500,0.5,0.1">Healthy motor</button><button class="chip" data-p="imbalance,1500,0.6,0.15">Imbalanced rotor</button><button class="chip" data-p="misalignment,1800,0.6,0.15">Misaligned shaft</button><button class="chip" data-p="bpfo,1500,0.6,0.15">Outer-race defect</button><button class="chip" data-p="bpfi,1500,0.6,0.15">Inner-race defect</button></div>
+<p class="intro"><b>1. Place a motor</b> on the rig → <b>2. set</b> speed, fault and severity → <b>3. click Run Analysis</b>. Or pick a quick scenario above.</p>
+  <div class="grid">
+    <!-- LEFT: controls -->
+    <div>
+      <div class="rig">
+        <svg viewBox="0 0 210 90" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="66" width="202" height="8" fill="var(--border-hi)"/>
+          <rect x="18" y="30" width="56" height="36" rx="3" fill="var(--panel)" stroke="var(--green)" stroke-width="1.5"/>
+          <text id="rigLabel" x="46" y="52" fill="var(--green)" font-size="9" font-family="monospace" text-anchor="middle">IND</text>
+          <rect x="74" y="44" width="46" height="8" fill="var(--border-hi)"/>
+          <circle cx="132" cy="48" r="16" fill="var(--panel)" stroke="var(--border-hi)" stroke-width="1.5"/>
+          <circle cx="132" cy="48" r="3" fill="var(--border-hi)"/>
+          <rect x="52" y="18" width="10" height="12" fill="var(--amber)"/>
+          <text x="57" y="14" fill="var(--amber)" font-size="7" font-family="monospace" text-anchor="middle">ACC</text>
+        </svg>
+      </div>
+      <div class="panel">
+        <div class="row">
+          <label class="label">MOTOR TYPE — click to place on rig</label>
+          <div class="motor-grid">
+            <div class="motor-card active" data-motor="ind" data-label="IND">3-phase induction</div>
+            <div class="motor-card" data-motor="dc" data-label="DC">DC shunt</div>
+            <div class="motor-card" data-motor="sync" data-label="SYN">Synchronous</div>
+            <div class="motor-card" data-motor="bldc" data-label="BLDC">BLDC</div>
+          </div>
+        </div>
+        <div class="row">
+          <label class="label">SHAFT SPEED <span class="val" id="rpmVal">1500 RPM</span></label>
+          <input type="range" id="rpm" min="300" max="3600" step="10" value="1500">
+        </div>
+        <div class="row" id="rowFault">
+          <label class="label">FAULT TYPE</label>
+          <select id="fault">
+            <option value="none">Healthy (baseline)</option>
+            <option value="imbalance">Rotor imbalance (1×)</option>
+            <option value="misalignment">Shaft misalignment (2×)</option>
+            <option value="bpfo">Bearing — outer race (BPFO)</option>
+            <option value="bpfi">Bearing — inner race (BPFI)</option>
+            <option value="bsf">Bearing — rolling element (BSF)</option>
+          </select>
+        </div>
+        <div class="row" id="rowSev">
+          <label class="label">FAULT SEVERITY <span class="val" id="sevVal">0.60</span></label>
+          <input type="range" id="sev" min="0" max="1" step="0.01" value="0.6">
+        </div>
+        <div class="row">
+          <label class="label">NOISE FLOOR <span class="val" id="noiseVal">0.15</span></label>
+          <input type="range" id="noise" min="0" max="0.6" step="0.01" value="0.15">
+        </div>
+      </div>
+      <div class="panel">
+        <label class="label">BEARING GEOMETRY</label>
+        <div class="row" style="margin-bottom:8px;"><label class="label" style="margin-bottom:2px;">Rolling elements N <span class="val" id="nVal">9</span></label><input type="range" id="n" min="6" max="16" step="1" value="9"></div>
+        <div class="row" style="margin-bottom:8px;"><label class="label" style="margin-bottom:2px;">d / D ratio <span class="val" id="ddVal">0.30</span></label><input type="range" id="dd" min="0.15" max="0.45" step="0.01" value="0.30"></div>
+        <div class="row"><label class="label" style="margin-bottom:2px;">Contact angle θ° <span class="val" id="thVal">0°</span></label><input type="range" id="theta" min="0" max="40" step="1" value="0"></div>
+      </div>
+      <div class="panel" id="samplePanel"><label class="label">SAMPLING &amp; WINDOW</label>
+        <div class="row" style="margin-bottom:8px;"><label class="label" style="margin-bottom:2px;">Sampling rate f<sub>s</sub></label><select id="fs"><option value="500">500 Hz</option><option value="1000">1000 Hz</option><option value="2000">2000 Hz</option><option value="4000" selected>4000 Hz</option><option value="8000">8000 Hz</option></select></div>
+        <div class="row"><label class="label" style="margin-bottom:2px;">Window</label><select id="win"><option value="hann" selected>Hann</option><option value="rect">None (rectangular)</option></select></div></div>
+      <div class="panel hid" id="chalPanel"><label class="label">CHALLENGE</label>
+        <button class="chip" id="newChal" style="width:100%;margin-bottom:12px;">New challenge</button>
+        <label class="label">YOUR DIAGNOSIS</label>
+        <select id="guess"><option value="none">Healthy</option><option value="imbalance">Rotor imbalance</option><option value="misalignment">Shaft misalignment</option><option value="bpfo">Outer-race bearing fault</option><option value="bpfi">Inner-race bearing fault</option><option value="bsf">Rolling-element fault</option></select>
+        <button class="chip on" id="submitChal" style="width:100%;margin-top:10px;">Submit &amp; reveal</button>
+        <div class="note" id="chalMsg">Press New challenge.</div><div class="note" id="chalScore"></div></div>
+      <button class="run-btn" id="runBtn">▶ RUN ANALYSIS</button>
+    </div>
+
+    <!-- CENTER: scopes -->
+    <div>
+      <div class="scope"><h2>MOTOR VIEW: LIVE CUTAWAY<label style="float:right;font-weight:500"><input type="checkbox" id="mvSlow" checked> Slow motion</label></h2><canvas id="motorCv" style="height:auto;aspect-ratio:760/300"></canvas><div id="mvCap" class="note" style="line-height:1.6;margin:6px 0 8px"></div></div>
+      <div class="scope"><h2>TIME DOMAIN — ACCELEROMETER SIGNAL x(t)</h2><div class="chart-box"><canvas id="wave"></canvas><div class="ph" id="wavePh">Place a motor, set parameters, click RUN ANALYSIS</div></div></div>
+      <div class="scope"><h2 id="specTitle">FREQUENCY DOMAIN — FFT MAGNITUDE SPECTRUM (Hann window, N=2048)</h2><div class="chart-box"><canvas id="spec"></canvas><div class="ph" id="specPh">Waiting for first run</div></div></div>
+      <div class="note" id="formula"></div><div class="warn" id="warn" style="display:none"></div>
+      <div class="panel hid" id="fixPanel" style="margin-top:14px;border-color:var(--brand)"></div>
+    </div>
+
+    <!-- RIGHT: diagnosis -->
+    <div>
+      <div class="status idle" id="statusBox">
+        <div class="line1"><span class="dot"></span><span id="statusText">AWAITING RUN</span></div>
+        <div class="line2" id="statusSub">Place a motor, set parameters, click RUN ANALYSIS</div>
+      </div>
+      <div class="panel" id="roPanel">
+        <label class="label">DIAGNOSTIC READOUT</label>
+        <div class="readout"><span>Shaft freq f_r</span><span id="roFr">—</span></div>
+        <div class="readout"><span>Strongest candidate</span><span id="roFf">—</span></div>
+        <div class="readout"><span>Peak amplitude</span><span id="roPeak">—</span></div>
+        <div class="readout"><span>Baseline threshold</span><span id="roThresh">—</span></div>
+        <div class="readout"><span>Peak / threshold</span><span id="roRatio">—</span></div>
+      </div>
+      <div class="panel" id="scanPanel"><label class="label">BLIND SCAN: ALL CANDIDATES</label><div id="scanList"></div></div>
+      <div class="note">BPFO = (N/2)f_r[1−(d/D)cosθ] · BPFI = (N/2)f_r[1+(d/D)cosθ] · BSF = (D/2d)f_r[1−(d/D)²cos²θ]. Imbalance sits at 1×f_r, misalignment at 2×f_r.</div>
+    </div>
+  </div>
+</div></section><section class="view" id="v-iot"><div class="ph-hd"><div class="sx"><div class="eyebrow">IoT Live</div><h2 class="h">Connect a real motor and diagnose it automatically</h2>
+<p class="lead" style="margin:0">A sensor node (ESP32 with an accelerometer and a tachometer pulse) streams each vibration window as a data packet. VIBRAMOT reads the sampling rate, speed and bearing details from the packet itself, so nothing is typed in.</p></div></div>
+<div class="dbwrap"><div class="panel" style="padding:14px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><label class="label" style="margin:0">LIVE HARDWARE RIG · SIMULATED MOTOR NODE</label><span class="chip" id="rigBadge" style="cursor:default">OFFLINE</span></div>
+<div style="overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:#f8fafc"><canvas id="rigCv" style="display:block;width:100%;min-width:820px;aspect-ratio:1000/340"></canvas></div>
+<div class="presets" id="rigSteps" style="gap:6px;margin:12px 0 0"><span class="chip" data-i="0">Tacho pulse / rev</span>→<span class="chip" data-i="1">ADXL345 sampled over I²C</span>→<span class="chip" data-i="2">ESP32 fills 2048 samples</span>→<span class="chip" data-i="3">Packs JSON</span>→<span class="chip" data-i="4">USB or Wi-Fi/MQTT</span>→<span class="chip" data-i="5">FFT + blind detector</span></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.45">
+<div><b style="color:var(--navy)" id="rigLegMT">ESP32 DevKit</b><br><span id="rigLegM">Samples, buffers and sends.</span></div>
+<div><b style="color:var(--navy)" id="rigLegST">ADXL345 accelerometer</b><br><span id="rigLegS">Bolted on the motor housing.</span></div>
+<div><b style="color:var(--navy)">IR / hall tachometer</b><br>One pulse per turn from reflective tape on the shaft disc.</div>
+<div><b style="color:var(--navy)">Motor + load disc</b><br>Slowed 10× on screen so you can see the imbalance, misalignment or bearing fault.</div>
+<div><b style="color:var(--navy)">USB cable</b><br>Serial JSON lines at 921600 baud to Chrome or Edge.</div>
+<div><b style="color:var(--navy)">Wi-Fi + MQTT broker</b><br>Same JSON packet published to a topic, read by the page over WebSocket.</div></div>
+<div class="note" id="rigNote" style="margin-top:10px;color:var(--navy)"></div><div class="note" style="margin-top:6px">This rig is simulated because a live motor cannot be brought to every viewer. The waveform is built from the motor model (shaft tone, fault tone, noise), packed into the same JSON packet a real ESP32 sends, and the spectrum below is computed from that packet by the same FFT and detector. Switch the data source to USB serial or MQTT and the same drawing follows your real device.</div></div>
+<div class="panel" style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px"><label class="label" style="margin:0" id="pinTitle">BOARD PINOUT</label><span class="note" style="margin:0">Highlighted pins are the ones your wiring uses. Illustrations drawn for this project.</span></div>
+<div id="pinGrid" style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start"><div id="pinBoard" style="text-align:center"></div><div><div id="pinSensor" style="text-align:center"></div><div id="pinLegend" style="font-size:13px;color:var(--muted);margin-top:12px"></div></div></div></div>
+<div style="display:grid;grid-template-columns:270px 1fr;gap:16px" id="lvGrid"><div>
+ <div class="panel"><label class="label">DATA SOURCE</label><select id="lvSrc"><option value="demo">Virtual rig (simulated hardware)</option><option value="serial">USB serial (Chrome or Edge)</option><option value="mqtt">MQTT over WebSocket</option></select>
+  <div id="lvMq" class="hid" style="margin-top:10px"><label class="label">BROKER URL</label><input id="lvUrl" value="wss://broker.hivemq.com:8884/mqtt" style="width:100%;padding:7px;border:1px solid var(--border-hi);border-radius:8px"><label class="label" style="margin-top:8px">TOPIC</label><input id="lvTopic" value="vibramot/motor-01/vibration" style="width:100%;padding:7px;border:1px solid var(--border-hi);border-radius:8px"></div>
+  <div id="lvHw" style="margin-top:10px"><label class="label">CONTROLLER BOARD</label><select id="rigMcu"><option value="esp32">ESP32 DevKit (Wi-Fi + USB)</option><option value="esp8266">ESP8266 NodeMCU (Wi-Fi + USB)</option><option value="pico">Raspberry Pi Pico W (Wi-Fi + USB)</option><option value="pi4">Raspberry Pi 4 (Wi-Fi + USB)</option><option value="stm32">STM32 Blue Pill (USB only)</option><option value="uno">Arduino Uno (USB only)</option></select>
+<label class="label" style="margin-top:10px">VIBRATION SENSOR</label><select id="rigSen"><option value="adxl345">ADXL345 (I²C)</option><option value="mpu6050">MPU6050 (I²C)</option><option value="lis3dh">LIS3DH (I²C)</option><option value="adxl335">ADXL335 (analog)</option><option value="piezo">Piezo disc + amplifier (analog)</option></select>
+</div><div id="lvSr" class="hid" style="margin-top:10px"><label class="label">SERIAL BAUD RATE</label><select id="lvBaud"><option value="921600">921600</option><option value="460800">460800</option><option value="250000">250000</option><option value="115200">115200</option><option value="1000000">1000000</option></select></div>
+  <div id="lvDm" style="margin-top:10px"><label class="label">MOTOR CONDITION</label><select id="lvDemoF"><option value="none">Healthy</option><option value="imbalance">Rotor imbalance</option><option value="misalignment">Shaft misalignment</option><option value="bpfo">Outer-race bearing fault</option><option value="bpfi">Inner-race bearing fault</option><option value="bsf">Rolling-element fault</option></select><label class="label" style="margin-top:10px">SHAFT SPEED <span class="val" id="rigRpmV">1500 RPM</span></label><input type="range" id="rigRpm" min="1200" max="3000" step="60" value="1500"><label class="label" style="margin-top:10px">FAULT SEVERITY <span class="val" id="rigSevV">0.60</span></label><input type="range" id="rigSev" min="0.2" max="1" step="0.05" value="0.6"><label class="label" style="margin-top:10px">LINK TO LAPTOP</label><select id="rigRoute"><option value="wifi">Wi-Fi + MQTT broker</option><option value="usb">USB serial cable</option></select></div>
+  <button class="run-btn" id="lvBtn" style="margin-top:12px">Connect</button><button class="chip" id="lvBase" style="width:100%;margin-top:8px">Capture healthy baseline</button><div class="note" id="lvMsg" style="display:none"></div></div>
+ <div class="panel"><label class="label">DEVICE (READ FROM PACKETS)</label>
+  <div class="readout"><span>State</span><span id="lvState">Disconnected</span></div><div class="readout"><span>Device</span><span id="lvId">-</span></div><div class="readout"><span>Sampling rate</span><span id="lvFs">-</span></div><div class="readout"><span>Shaft speed</span><span id="lvRpm">-</span></div><div class="readout"><span>Temperature</span><span id="lvT">-</span></div><div class="readout"><span>Packets</span><span id="lvN">0</span></div><div class="readout"><span>Baseline</span><span id="lvBs">not captured</span></div></div></div>
+<div><div class="status idle" id="lvStatus"><div class="line1"><span class="dot"></span><span id="lvStatusT">WAITING FOR DATA</span></div><div class="line2" id="lvStatusS">Choose a source and press Connect.</div></div>
+ <div class="scope"><h2>LIVE SPECTRUM (DC REMOVED, HANN WINDOW)</h2><canvas id="lvCv" style="width:100%;height:200px"></canvas></div>
+ <div class="panel"><label class="label">BLIND SCAN: ALL CANDIDATES</label><div id="lvScan"></div></div>
+ <div class="panel hid" id="liveFix" style="margin-top:14px;border-color:var(--brand)"></div></div></div>
+<div class="faq" style="margin-top:26px"><details><summary>Packet format the page expects (one JSON line, or one MQTT message, per window)</summary><pre style="overflow:auto;font-size:12px;background:var(--panel2);padding:12px;border-radius:10px">{"id":"motor-01","fs":1600,"rpm":1480,"n":9,"dd":0.2,"t":41.5,"x":[ ...2048 raw accelerometer values... ]}</pre><p>id, rpm, n (balls), dd (d/D), theta (contact angle) and t (temperature) are optional. If rpm is missing the page estimates it from the strongest peak between 8 and 100 Hz. The 1 g gravity offset is removed automatically.</p></details>
+<details open><summary id="fwSum">Sketch for the selected board</summary><div id="fwInfo" style="font-size:13.5px;color:var(--muted);line-height:1.65;margin:10px 0"></div><div style="display:flex;gap:8px;margin-bottom:8px"><button class="chip" id="fwCopy">Copy sketch</button><button class="chip" id="fwDl">Download file</button></div><pre id="lvFw" style="overflow:auto;font-size:12px;background:var(--panel2);padding:12px;border-radius:10px;max-height:560px"></pre></details>
+<details><summary>Using a public MQTT broker</summary><p>Public brokers are open to everyone. Pick a unique topic and avoid sending anything private. For a classroom, run a local Mosquitto broker with WebSockets enabled.</p></details></div></div>
+</section><section class="view" id="v-learn"><div class="ph-hd"><div class="sx"><div class="eyebrow">Learn</div><h2 class="h">Fault signatures and the signal chain</h2><p class="lead" style="margin:0">Each fault leaves a fingerprint at a predictable frequency. Shaft frequency is f<sub>r</sub> = RPM / 60.</p></div></div>
+<div class="sx"><div class="tw"><table class="t"><tr><th>Fault</th><th>Where it appears</th><th>Formula</th></tr>
+<tr><td>Imbalance</td><td>1× shaft frequency</td><td>f = f<sub>r</sub></td></tr><tr><td>Misalignment</td><td>2× shaft frequency (real machines add harmonics)</td><td>f = 2f<sub>r</sub></td></tr>
+<tr><td>Outer race (BPFO)</td><td>Ball-pass frequency, outer race</td><td>(N/2)·f<sub>r</sub>·[1 − (d/D)cosθ]</td></tr>
+<tr><td>Inner race (BPFI)</td><td>Ball-pass frequency, inner race</td><td>(N/2)·f<sub>r</sub>·[1 + (d/D)cosθ]</td></tr>
+<tr><td>Rolling element (BSF)</td><td>Ball spin frequency</td><td>(D/2d)·f<sub>r</sub>·[1 − (d/D)²cos²θ]</td></tr></table></div>
+<p class="lead" style="margin-top:12px;font-size:14px">N = rolling elements, d = ball diameter, D = pitch diameter, θ = contact angle.</p></div>
+<div class="sx"><h2 class="h">What each fault looks like, and what to do</h2><div class="tw"><table class="t"><tr><th>Fault</th><th>In the motor view</th><th>Usual cause</th><th>Recommended action</th></tr><tr><td>Imbalance</td><td>Red mass on the rotor; motor shakes in a circle each turn</td><td>Dirt build-up, lost balance weight, bent shaft</td><td>Balance the rotor in place</td></tr><tr><td>Misalignment</td><td>Load shaft tilts and offsets at the coupling</td><td>Soft foot, thermal growth, poor installation</td><td>Realign with a dial indicator or laser tool</td></tr><tr><td>Outer-race defect</td><td>Pit on the fixed ring flashes as each ball passes</td><td>Contamination, poor lubrication, overload</td><td>Trend the peak and plan a bearing change</td></tr><tr><td>Inner-race defect</td><td>Pit on the spinning ring flashes as each ball passes</td><td>Fatigue, shaft fit problems, lubrication loss</td><td>Plan bearing replacement</td></tr><tr><td>Rolling-element defect</td><td>Marked ball flashes as it touches each ring</td><td>Debris damage, corrosion, lubricant breakdown</td><td>Replace the bearing at the next stop</td></tr></table></div></div>
+<div class="band"><div class="sx"><h2 class="h">Ideas the dashboard makes visible</h2><div class="g3">
+<div class="fc"><h3>Nyquist sampling</h3><p>Sample at least twice the highest frequency of interest (f<sub>s</sub> ≥ 2f<sub>max</sub>) or the spectrum aliases. The default f<sub>s</sub> is 4000 Hz; change it on the dashboard to see aliasing.</p></div>
+<div class="fc"><h3>Windowing</h3><p>A Hann window tapers the edges so spectral leakage does not smear the fault peak.</p></div>
+<div class="fc"><h3>FFT</h3><p>Converts the time signal to frequency; a peak at the expected fault frequency indicates the fault.</p></div>
+<div class="fc"><h3>Threshold detection</h3><p>The detector scans every candidate fault frequency and compares each peak with a robust noise floor (median + 10·MAD). The strongest candidate above threshold is reported.</p></div></div></div></div></section><section class="view" id="v-eval"><div class="ph-hd"><div class="sx"><div class="eyebrow">Evaluation</div><h2 class="h">How well does the detector perform?</h2>
+<p class="lead" style="margin:0">A Monte Carlo test of the blind detector on synthetic signals. Each trial uses fresh noise; shaft speed cycles through 1200–3000 RPM; bearing N = 9, d/D = 0.30, θ = 0°; f<sub>s</sub> = 4000 Hz, Hann window. Fault amplitude is 1.5 × severity relative to the rotation component.</p></div></div>
+<div class="sx"><div id="evalTable"></div>
+<div style="margin-top:14px"><button class="btn sm" id="evalRun">Re-run in browser (20 trials per cell)</button> <span class="sub" id="evalStatus"></span></div>
+<h2 class="h" style="font-size:20px;margin-top:34px">How to read it</h2>
+<ul class="pl"><li><b>Detected:</b> at least one candidate frequency exceeds its threshold.</li><li><b>Identified:</b> the top-ranked candidate is the injected fault.</li><li><b>False alarm:</b> a healthy motor is flagged as faulty.</li></ul>
+<h2 class="h" style="font-size:20px;margin-top:26px">Findings</h2>
+<ul class="pl"><li>No false alarms in 1000 healthy trials at each of the three noise levels.</li>
+<li>Misalignment and the three bearing faults are detected and correctly identified at 98–100% from severity 0.05 at noise 0.3, and from severity 0.1 at noise 0.6. Whenever a fault was detected it was identified correctly.</li>
+<li>Imbalance adds to the 1× component a healthy machine already has, and is detected once it raises that amplitude by about 25% (severity of about 0.2 or more).</li></ul>
+<h2 class="h" style="font-size:20px;margin-top:26px">Scope of this evaluation</h2><ul class="pl"><li>The test uses the VIBRAMOT signal generator with white noise and one fault at a time, which makes every result repeatable and easy to check.</li><li>Shaft speeds from 1200 to 3000 rpm are covered (f<sub>s</sub> = 4000 Hz, 2048 samples, resolution 1.95 Hz), where all five fault peaks are resolved from the 1× line.</li><li>The adaptive threshold (spectrum median + 10 robust standard deviations) gave zero false alarms across 3000 healthy trials.</li></ul></div></section><section class="view" id="v-labs"><div class="ph-hd"><div class="sx"><div class="eyebrow">Labs &amp; departments</div><h2 class="h">Where VIBRAMOT fits in your curriculum</h2>
+<p class="lead" style="margin:0">Courses below come from the Automobile Engineering and E&amp;I (EI23304) syllabi.</p></div></div>
+<div class="sx"><div class="chips" id="labChips"><button class="chip on" data-f="all">All</button><button class="chip" data-f="Automobile">Automobile</button><button class="chip" data-f="E&amp;I">E&amp;I</button></div>
+<div class="g3" id="labGrid"></div></div>
+<div class="band"><div class="sx"><h2 class="h">Which motor preset for which lab?</h2><div class="tw"><table class="t"><tr><th>Preset</th><th>Typically used in</th><th>Useful faults to practise</th></tr>
+<tr><td>3-phase induction</td><td>Electrical Machines, Basic Electrical, AU23503 vibration practical</td><td>Imbalance, misalignment, bearing defects</td></tr>
+<tr><td>DC shunt</td><td>Basic Electrical, Electrical Machines</td><td>Imbalance, bearing defects</td></tr>
+<tr><td>Synchronous</td><td>Electrical Machines (V curves, alternator)</td><td>Imbalance, misalignment</td></tr>
+<tr><td>BLDC</td><td>EV electives, special machines</td><td>Bearing defects, imbalance</td></tr></table></div></div></div>
+<div class="sx"><div class="eyebrow">For lab in-charges</div><h2 class="h">What to record about each motor</h2><div class="faq">
+<details><summary>Motor nameplate details</summary><p>Type, rated power (kW/HP), rated speed (RPM), supply and number of poles. Rated speed sets the shaft frequency f<sub>r</sub> = RPM / 60 used by the simulator.</p></details>
+<details><summary>Bearing designation and geometry</summary><p>Note the bearing number (for example 6205) and look up the number of balls N, ball diameter d and pitch diameter D from the datasheet. The commonly cited CWRU test bearing is a 6205 with 9 balls, d ≈ 7.94 mm, D ≈ 39.04 mm (d/D ≈ 0.20); verify against your own datasheet. These feed the bearing-geometry sliders.</p></details>
+<details><summary>Quantity, condition and availability</summary><p>How many units exist, whether any are known to be faulty, and which sessions use them. This tells departments where a virtual practice session helps most.</p></details>
+<details><summary>Existing vibration instruments</summary><p>Whether an accelerometer, DAQ or analyser exists. If not, VIBRAMOT is the only way students see a spectrum.</p></details></div></div>
+<div class="sx tight"><div class="cta-band rv"><h2>Want your lab listed?</h2><p>Confirm the motor details above with your lab in-charge and add them to the project report.</p><span class="btn" data-go="about">About the project</span></div></div></section><section class="view" id="v-about"><div class="ph-hd"><div class="sx"><div class="eyebrow">About us</div><h2 class="h">Making vibration diagnosis learnable for every student</h2>
+<p class="lead" style="margin:0">VIBRAMOT exists for one reason: students who cannot reach a motor lab should still learn how faults are found.</p></div></div>
+<div class="sx"><div class="g3"><div class="fc"><h3>The problem</h3><p>Real vibration analysis needs accelerometers, motor rigs and analysers. Free IoT simulators do not model vibration signals, free spectrum viewers lack fault injection, and commercial tools are paid.</p></div>
+<div class="fc"><h3>Our approach</h3><p>Simulate the whole chain in the browser: machine, vibration, windowing, FFT, fault frequencies, decision. Free, installation-free and explainable.</p></div>
+<div class="fc"><h3>Our principle</h3><p>A transparent teaching tool. Every diagnosis shows its numbers: expected frequency, measured peak and threshold, and the maths is verified.</p></div></div></div>
+<div class="band"><div class="sx"><h2 class="h">Under the hood</h2><div class="tw"><table class="t"><tr><th>Stage</th><th>Implementation</th></tr>
+<tr><td>Signal generator</td><td>Shaft tone + fault tone + random noise, sampled at 4000 Hz (Nyquist limit 2000 Hz)</td></tr>
+<tr><td>Windowing</td><td>Hann window, 2048 samples</td></tr><tr><td>FFT</td><td>Iterative radix-2 Cooley–Tukey, written from scratch in JavaScript</td></tr>
+<tr><td>Detection</td><td>Blind scan of five candidate frequencies (±2 bins) against a median + 10·MAD noise floor; imbalance is compared with the healthy 1× reference</td></tr>
+<tr><td>Interface</td><td>HTML, CSS, JavaScript and Chart.js; runs fully client-side</td></tr></table></div></div></div>
+<div class="sx"><div class="eyebrow">Validation</div><h2 class="h">How we checked it</h2><div class="g3">
+<div class="fc"><h3>FFT vs numpy</h3><p>Identical input gave outputs matching to about 5.5×10⁻¹⁵, with the peak at bin 40 as predicted.</p></div>
+<div class="fc"><h3>Fault frequencies</h3><p>For 1500 RPM, N = 9, d/D = 0.30, the BPFO is 78.75 Hz and the spectrum peak lands on it.</p></div>
+<div class="fc"><h3>Scope</h3><p>Model-generated signals with one fault at a time, evaluated on simulated data: an ideal setting for learning the principles of diagnosis.</p></div></div></div>
+<div class="band"><div class="sx"><div class="eyebrow">Project summary</div><h2 class="h">What was built</h2><div class="tl"><div><b>Simulator</b><span>Signal generator, Hann window, radix-2 FFT, blind multi-candidate detector and live dashboard.</span></div><div><b>Learning features</b><span>Animated motor cutaway, challenge mode against the detector, sampling and window controls with aliasing and resolution warnings, bearing geometry controls, maintenance guidance.</span></div><div><b>Evaluation</b><span>Monte Carlo study of detection, identification and false-alarm rates across severity and noise levels.</span></div><div><b>Curriculum fit</b><span>Mapped to Automobile Engineering and E&amp;I lab courses. Related work: Samal et al., IEEE Access, vol. 13, 2025.</span></div></div></div></div></div>
+</section>
+<footer class="site"><div class="in"><div><div class="logo" style="color:#fff;margin-bottom:10px"><i><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M2 12h3l2-6 3 12 3-9 2 3h7"/></svg></i>VIBRAMOT</div><p style="margin:0;max-width:340px;line-height:1.6">A free browser-based vibration fault diagnosis simulator for students without access to a motor lab.</p></div>
+<div><h4>Explore</h4><a data-go="home">Home</a><a data-go="dashboard">Dashboard</a><a data-go="iot">IoT Live</a><a data-go="learn">Learn</a><a data-go="eval">Evaluation</a><a data-go="labs">Labs</a><a data-go="about">About us</a></div>
+<div><h4>Project</h4><span>Status: complete</span></div></div>
+<div class="cp">Signals are generated from standard fault-frequency models, so every result is explainable and repeatable.</div></footer>
+</div>
+<script>
+// ---------- FFT (iterative radix-2 Cooley–Tukey) ----------
+/* ENGINE START */
+function fft(re, im){
+  const n = re.length;
+  for (let i=1, j=0; i<n; i++){
+    let bit = n>>1;
+    for (; j&bit; bit>>=1) j ^= bit;
+    j ^= bit;
+    if (i<j){ [re[i],re[j]]=[re[j],re[i]]; [im[i],im[j]]=[im[j],im[i]]; }
+  }
+  for (let len=2; len<=n; len<<=1){
+    const ang = -2*Math.PI/len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i=0; i<n; i+=len){
+      let cwr=1, cwi=0;
+      for (let k=0; k<len/2; k++){
+        const ur=re[i+k], ui=im[i+k];
+        const vr=re[i+k+len/2]*cwr - im[i+k+len/2]*cwi;
+        const vi=re[i+k+len/2]*cwi + im[i+k+len/2]*cwr;
+        re[i+k]=ur+vr; im[i+k]=ui+vi;
+        re[i+k+len/2]=ur-vr; im[i+k+len/2]=ui-vi;
+        const nwr=cwr*wr-cwi*wi, nwi=cwr*wi+cwi*wr; cwr=nwr; cwi=nwi;
+      }
+    }
+  }
+}
+const N = 2048, KMAD = 10, IMBM = 0.25;
+function faultFreq(type, fr, n, dd, thDeg){
+  const c = Math.cos(thDeg*Math.PI/180);
+  switch(type){
+    case 'imbalance': return fr;
+    case 'misalignment': return 2*fr;
+    case 'bpfo': return (n/2)*fr*(1-dd*c);
+    case 'bpfi': return (n/2)*fr*(1+dd*c);
+    case 'bsf': return (1/(2*dd))*fr*(1-dd*dd*c*c);
+    default: return null;
+  }
+}
+function fold(f, fs){ const m = f % fs; return m > fs/2 ? fs - m : m; }
+function simulate(o){
+  const fr=o.rpm/60, ff=faultFreq(o.fault,fr,o.n,o.dd,o.theta), A=1.5*o.sev, w=2*Math.PI, x=new Float64Array(N);
+  for (let i=0;i<N;i++){ const t=i/o.fs; let v=Math.sin(w*fr*t); if(ff) v+=A*Math.sin(w*ff*t); x[i]=v+(Math.random()*2-1)*o.noise; }
+  return x;
+}
+function spectrum(x, hann){
+  const re=new Float64Array(N), im=new Float64Array(N), mag=new Float64Array(N/2);
+  for (let i=0;i<N;i++) re[i]=x[i]*(hann?0.5*(1-Math.cos(2*Math.PI*i/(N-1))):1);
+  fft(re,im);
+  for (let i=0;i<N/2;i++) mag[i]=Math.hypot(re[i],im[i])/(N/2);
+  return mag;
+}
+const CAND=[['imbalance','Rotor imbalance'],['misalignment','Shaft misalignment'],['bpfo','Outer-race bearing fault'],['bpfi','Inner-race bearing fault'],['bsf','Rolling-element fault']];
+function scan(mag, o, hann){
+  const half=mag.length, df=o.fs/N, fr=o.rpm/60, gain=hann?0.5:1;
+  const s=Float64Array.from(mag).sort(), med=s[half>>1];
+  const d=Float64Array.from(mag,m=>Math.abs(m-med)).sort(), mad=1.4826*d[half>>1];
+  const floor=med+KMAD*mad;
+  return CAND.map(([k,name])=>{
+    const f=faultFreq(k,fr,o.n,o.dd,o.theta), fa=fold(f,o.fs), b=Math.round(fa/df);
+    let pk=0; for(let i=Math.max(1,b-2);i<=Math.min(half-1,b+2);i++) if(mag[i]>pk) pk=mag[i];
+    const thr = k==='imbalance' ? gain*(1+IMBM) : floor;
+    const masked = k!=='imbalance' && Math.abs(fa-fold(fr,o.fs))/df < 4.5;
+    return {k,name,f,fa,pk,thr,masked,score:masked?0:pk/thr,aliased:f>o.fs/2};
+  }).sort((a,b)=>b.score-a.score);
+}
+const EV={noises:[0.1,0.3,0.6],sevs:[0.02,0.05,0.1,0.2,0.4],rpms:[1200,1500,1800,2400,3000]};
+function evalTrial(fault,sev,noise,t){
+  const o={rpm:EV.rpms[t%EV.rpms.length],fault,sev,noise,n:9,dd:0.3,theta:0,fs:4000};
+  return scan(spectrum(simulate(o),true),o,true)[0];
+}
+function runEval(T,H){
+  const res={T,H,cells:{},fa:{}};
+  for(const nz of EV.noises){
+    let fa=0; for(let t=0;t<H;t++) if(evalTrial('none',0,nz,t).score>1) fa++;
+    res.fa[nz]=100*fa/H;
+    for(const [f] of CAND) for(const sv of EV.sevs){
+      let d=0,c=0;
+      for(let t=0;t<T;t++){ const r=evalTrial(f,sv,nz,t); if(r.score>1){ d++; if(r.k===f) c++; } }
+      res.cells[f+'|'+nz+'|'+sv]=[100*d/T,100*c/T];
+    }
+  }
+  return res;
+}
+/* ENGINE END */
+
+let waveChart, specChart, selectedMotor = 'ind';
+
+document.querySelectorAll('.motor-card').forEach(card=>{
+  card.addEventListener('click', ()=>{
+    document.querySelectorAll('.motor-card').forEach(c=>c.classList.remove('active'));
+    card.classList.add('active');
+    selectedMotor = card.dataset.motor;
+    document.getElementById('rigLabel').textContent = card.dataset.label;
+  });
+});
+
+['rpm','sev','noise','n','dd','theta'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', ()=>{
+    const el = document.getElementById(id), v = +el.value;
+    if (id==='rpm') document.getElementById('rpmVal').textContent = v+' RPM';
+    if (id==='sev') document.getElementById('sevVal').textContent = v.toFixed(2);
+    if (id==='noise') document.getElementById('noiseVal').textContent = v.toFixed(2);
+    if (id==='n') document.getElementById('nVal').textContent = v;
+    if (id==='dd') document.getElementById('ddVal').textContent = v.toFixed(2);
+    if (id==='theta') document.getElementById('thVal').textContent = v+'°';
+  });
+});
+
+const $=id=>document.getElementById(id);
+const NAMES={none:'Healthy',imbalance:'Rotor imbalance',misalignment:'Shaft misalignment',bpfo:'Outer-race bearing fault',bpfi:'Inner-race bearing fault',bsf:'Rolling-element fault'};
+let mode='explore', chal=null, lastScan=null, tally={n:0,you:0,det:0};
+$('specs').textContent='fs=4000Hz  N=2048  Δf=1.95Hz';
+function params(){
+  const c=mode==='challenge'&&chal;
+  return {rpm:+$('rpm').value, noise:+$('noise').value, n:+$('n').value, dd:+$('dd').value, theta:+$('theta').value, fs:+$('fs').value,
+    hann:$('win').value==='hann', fault:c?chal.fault:$('fault').value, sev:c?chal.sev:+$('sev').value};
+}
+function setVal(id,v){ const e=$(id); e.value=v; e.dispatchEvent(new Event('input')); }
+function lock(b){ ['rpm','noise','n','dd','theta','fs','win'].forEach(id=>$(id).disabled=b); }
+function setStatus(cls,t,sub){ $('statusBox').className='status '+cls; $('statusText').textContent=t; $('statusSub').textContent=sub; }
+function warnings(o,res){
+  const w=[], df=o.fs/N, al=res.filter(c=>c.aliased);
+  if(al.length) w.push('Aliasing: '+al.map(c=>c.name).join(', ')+' exceed the Nyquist limit ('+(o.fs/2)+' Hz) and fold back into the spectrum. Increase the sampling rate.');
+  let best=null;
+  for(let i=0;i<res.length;i++) for(let j=i+1;j<res.length;j++){ const d=Math.abs(res[i].fa-res[j].fa)/df; if(d<4.5&&(!best||d<best.d)) best={d,a:res[i].name,b:res[j].name}; }
+  if(best) w.push('Resolution: '+best.a+' and '+best.b+' are only '+best.d.toFixed(1)+' bins apart (Δf = '+df.toFixed(2)+' Hz), so their peaks overlap and identification is unreliable. Raise the shaft speed or lower the sampling rate.');
+  if(!o.hann) w.push('No window: spectral leakage raises the floor around strong peaks and can create false peaks.');
+  return w;
+}
+function showResults(ls){
+  const {o,res}=ls, top=res[0], det=top.score>1, fr=o.rpm/60;
+  $('roPanel').classList.remove('hid'); $('scanPanel').classList.remove('hid');
+  $('roFr').textContent=fr.toFixed(2)+' Hz'; $('roFf').textContent=top.fa.toFixed(2)+' Hz';
+  $('roPeak').textContent=top.pk.toFixed(3); $('roThresh').textContent=top.thr.toFixed(3); $('roRatio').textContent=top.score.toFixed(2)+'×';
+  $('scanList').innerHTML=res.map(c=>'<div class="cand'+(c.score>1?' hit':'')+'"><span>'+c.name+'</span><span>'+c.fa.toFixed(1)+' Hz'+(c.aliased?' (aliased)':'')+'</span><span>'+(c.masked?'unresolved':c.score.toFixed(1)+'×')+'</span></div>').join('');
+  let sub = det ? 'Strongest peak at '+top.fa.toFixed(1)+' Hz is '+top.score.toFixed(1)+'× its threshold.'+(res[1].score>1?' Also above threshold: '+res[1].name+'.':'') : 'No candidate frequency exceeds its threshold.';
+  if(mode==='explore') sub+=' Injected: '+NAMES[o.fault]+' ('+((det?top.k:'none')===o.fault?'match':'mismatch')+').';
+  setStatus(det?'fault':'ok', det?'FAULT DETECTED: '+top.name.toUpperCase():'NORMAL', sub);
+  fixUpdate(det?top.k:'none');
+}
+function paint(){
+  const {o,res}=lastScan, fr=o.rpm/60, ff=faultFreq(o.fault,fr,o.n,o.dd,o.theta);
+  const hidden=mode==='challenge'&&chal&&!chal.revealed;
+  if(hidden){
+    $('formula').textContent='Hidden fault: use the spectrum, the shaft speed and the bearing geometry to decide.';
+    setStatus('idle','CHALLENGE ACTIVE','Inspect the spectrum, choose a diagnosis, then submit.');
+    $('roPanel').classList.add('hid'); $('scanPanel').classList.add('hid'); $('fixPanel').classList.add('hid'); $('warn').style.display='none';
+  } else {
+    $('formula').textContent='f_r = '+o.rpm+'/60 = '+fr.toFixed(2)+' Hz'+(ff?'   →   injected fault frequency = '+ff.toFixed(2)+' Hz':'   (healthy: no fault injected)');
+    showResults(lastScan); const w=warnings(o,res); $('warn').style.display=w.length?'block':'none'; $('warn').innerHTML=w.join('<br>');
+  }
+}
+function render(){
+  if(typeof Chart==='undefined') return;
+  ['wavePh','specPh'].forEach(id=>{const e=$(id); if(e) e.remove();});
+  if(mode==='challenge'&&!chal) newChallenge(true);
+  const o=params(), x=simulate(o), mag=spectrum(x,o.hann), res=scan(mag,o,o.hann), df=o.fs/N;
+  lastScan={o,res};
+  $('specs').textContent='fs='+o.fs+'Hz  N='+N+'  Δf='+df.toFixed(2)+'Hz';
+  $('specTitle').textContent='FREQUENCY DOMAIN — FFT MAGNITUDE SPECTRUM ('+(o.hann?'Hann window':'no window')+', N=2048)';
+  const css=getComputedStyle(document.documentElement), col=n=>css.getPropertyValue(n).trim();
+  const sc=t=>({x:{ticks:{color:col('--muted'),font:{family:'IBM Plex Mono',size:9},maxTicksLimit:8},grid:{color:col('--border')},title:{display:true,text:t,color:col('--muted'),font:{family:'IBM Plex Mono',size:9}}},y:{ticks:{color:col('--muted'),font:{family:'IBM Plex Mono',size:9}},grid:{color:col('--border')}}});
+  const wl=Array.from({length:400},(_,i)=>(i/o.fs*1000).toFixed(1)), wd=Array.from(x.slice(0,400));
+  const sl=Array.from({length:N/2},(_,i)=>(i*df).toFixed(df<1?1:0)), sd=Array.from(mag);
+  const mk=(el,c,l,d,t)=>new Chart(el,{type:'line',data:{labels:l,datasets:[{data:d,borderColor:col(c),borderWidth:1.3,pointRadius:0,tension:.15}]},options:{animation:false,responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:sc(t)}});
+  if(!waveChart) waveChart=mk($('wave'),'--green',wl,wd,'ms'); else { waveChart.data.labels=wl; waveChart.data.datasets[0].data=wd; waveChart.update('none'); }
+  if(!specChart) specChart=mk($('spec'),'--amber',sl,sd,'Hz'); else { specChart.data.labels=sl; specChart.data.datasets[0].data=sd; specChart.update('none'); }
+  paint();
+}
+function newChallenge(noRender){
+  const F=['none','imbalance','misalignment','bpfo','bpfi','bsf'], f=F[Math.floor(Math.random()*F.length)], R=[1200,1500,1800,2400,3000];
+  chal={fault:f, sev:f==='none'?0:+(0.35+Math.random()*0.45).toFixed(2), revealed:false};
+  lock(false); setVal('rpm',R[Math.floor(Math.random()*R.length)]); setVal('noise',(0.1+Math.random()*0.3).toFixed(2));
+  $('fs').value='4000'; $('win').value='hann'; lock(true);
+  $('chalMsg').textContent='A fault (or none) is hidden. Run the analysis, inspect the spectrum, then submit your diagnosis.';
+  if(!noRender) render();
+}
+function submitChal(){
+  if(!chal||chal.revealed||!lastScan) return;
+  const top=lastScan.res[0], det=top.score>1?top.k:'none', you=$('guess').value===chal.fault, dt=det===chal.fault;
+  chal.revealed=true; tally.n++; if(you) tally.you++; if(dt) tally.det++;
+  $('chalMsg').textContent='Truth: '+NAMES[chal.fault]+(chal.fault!=='none'?' (severity '+chal.sev+')':'')+'. You: '+(you?'correct':'incorrect')+'. Detector: '+(dt?'correct':'incorrect')+'.';
+  $('chalScore').textContent='After '+tally.n+' round'+(tally.n>1?'s':'')+': you '+tally.you+', detector '+tally.det+'.';
+  paint();
+}
+function setMode(m){
+  mode=m; chal=null;
+  document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  const c=m==='challenge';
+  ['rowFault','rowSev','presetRow'].forEach(id=>$(id).classList.toggle('hid',c)); $('chalPanel').classList.toggle('hid',!c);
+  if(c) newChallenge(false);
+  else { lock(false); $('roPanel').classList.remove('hid'); $('scanPanel').classList.remove('hid'); $('warn').style.display='none'; $('fixPanel').classList.add('hid'); setStatus('idle','AWAITING RUN','Set parameters and click RUN ANALYSIS'); }
+}
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+$('newChal').addEventListener('click',()=>newChallenge(false));
+$('submitChal').addEventListener('click',submitChal);
+['fs','win'].forEach(id=>$(id).addEventListener('change',()=>{ if(waveChart) render(); }));
+const EVREF={"T":200,"H":1000,"cells":{"imbalance|0.1|0.02":[0,0],"imbalance|0.1|0.05":[0,0],"imbalance|0.1|0.1":[0,0],"imbalance|0.1|0.2":[34.5,34.5],"imbalance|0.1|0.4":[100,100],"misalignment|0.1|0.02":[100,100],"misalignment|0.1|0.05":[100,100],"misalignment|0.1|0.1":[100,100],"misalignment|0.1|0.2":[100,100],"misalignment|0.1|0.4":[100,100],"bpfo|0.1|0.02":[100,100],"bpfo|0.1|0.05":[100,100],"bpfo|0.1|0.1":[100,100],"bpfo|0.1|0.2":[100,100],"bpfo|0.1|0.4":[100,100],"bpfi|0.1|0.02":[100,100],"bpfi|0.1|0.05":[100,100],"bpfi|0.1|0.1":[100,100],"bpfi|0.1|0.2":[100,100],"bpfi|0.1|0.4":[100,100],"bsf|0.1|0.02":[100,100],"bsf|0.1|0.05":[100,100],"bsf|0.1|0.1":[100,100],"bsf|0.1|0.2":[100,100],"bsf|0.1|0.4":[100,100],"imbalance|0.3|0.02":[0,0],"imbalance|0.3|0.05":[0,0],"imbalance|0.3|0.1":[0,0],"imbalance|0.3|0.2":[31.5,31.5],"imbalance|0.3|0.4":[100,100],"misalignment|0.3|0.02":[0.5,0.5],"misalignment|0.3|0.05":[100,100],"misalignment|0.3|0.1":[100,100],"misalignment|0.3|0.2":[100,100],"misalignment|0.3|0.4":[100,100],"bpfo|0.3|0.02":[0,0],"bpfo|0.3|0.05":[99.5,99.5],"bpfo|0.3|0.1":[100,100],"bpfo|0.3|0.2":[100,100],"bpfo|0.3|0.4":[100,100],"bpfi|0.3|0.02":[0,0],"bpfi|0.3|0.05":[100,100],"bpfi|0.3|0.1":[100,100],"bpfi|0.3|0.2":[100,100],"bpfi|0.3|0.4":[100,100],"bsf|0.3|0.02":[0,0],"bsf|0.3|0.05":[100,100],"bsf|0.3|0.1":[100,100],"bsf|0.3|0.2":[100,100],"bsf|0.3|0.4":[100,100],"imbalance|0.6|0.02":[0,0],"imbalance|0.6|0.05":[0,0],"imbalance|0.6|0.1":[0,0],"imbalance|0.6|0.2":[27.5,27.5],"imbalance|0.6|0.4":[100,100],"misalignment|0.6|0.02":[0,0],"misalignment|0.6|0.05":[2.5,2.5],"misalignment|0.6|0.1":[97.5,97.5],"misalignment|0.6|0.2":[100,100],"misalignment|0.6|0.4":[100,100],"bpfo|0.6|0.02":[0,0],"bpfo|0.6|0.05":[0,0],"bpfo|0.6|0.1":[99.5,99.5],"bpfo|0.6|0.2":[100,100],"bpfo|0.6|0.4":[100,100],"bpfi|0.6|0.02":[0,0],"bpfi|0.6|0.05":[1.5,1.5],"bpfi|0.6|0.1":[99.5,99.5],"bpfi|0.6|0.2":[100,100],"bpfi|0.6|0.4":[100,100],"bsf|0.6|0.02":[0,0],"bsf|0.6|0.05":[2,2],"bsf|0.6|0.1":[99,99],"bsf|0.6|0.2":[100,100],"bsf|0.6|0.4":[100,100]},"fa":{"0.1":0,"0.3":0,"0.6":0}};
+function evalHTML(r,label){
+  const bg=v=>v>=95?'#dcfce7':v>=50?'#fef3c7':'#fee2e2';
+  let h='<div class="tw"><table class="t ev"><tr><th>Fault</th>'+EV.sevs.map(v=>'<th>severity '+v+'</th>').join('')+'</tr>';
+  EV.noises.forEach(nz=>{
+    h+='<tr class="sh"><td colspan="'+(EV.sevs.length+1)+'">Noise level '+nz+' · healthy false-alarm rate '+r.fa[nz].toFixed(1)+'%</td></tr>';
+    CAND.forEach(([k,name])=>{ h+='<tr><td>'+name+'</td>'+EV.sevs.map(v=>{const c=r.cells[k+'|'+nz+'|'+v]; return '<td style="background:'+bg(c[1])+'">'+c[0].toFixed(0)+' / '+c[1].toFixed(0)+'</td>';}).join('')+'</tr>'; });
+  });
+  return h+'</table></div><p class="sub">'+label+'</p>';
+}
+$('evalTable').innerHTML=evalHTML(EVREF,'Reference run: '+EVREF.T+' trials per cell and '+EVREF.H+' healthy trials per noise level. Each cell shows detected % / correctly identified %.');
+$('evalRun').addEventListener('click',()=>{ $('evalStatus').textContent='Running…';
+  setTimeout(()=>{ const t0=performance.now(), r=runEval(20,100);
+    $('evalTable').innerHTML=evalHTML(r,'Browser run: 20 trials per cell and 100 healthy trials per noise level ('+((performance.now()-t0)/1000).toFixed(1)+' s). Results vary slightly between runs.'); $('evalStatus').textContent='Done'; },40); });
+
+function boot(tries){
+  if (typeof Chart !== 'undefined'){
+    document.getElementById('runBtn').addEventListener('click', render);
+    return;
+  }
+  if (tries > 60){
+    document.querySelectorAll('.chart-box').forEach(b => b.innerHTML =
+      '<div style="color:var(--red);font-size:11px;padding:10px;">Chart.js failed to load from both CDNs — check your connection and reload.</div>');
+    return;
+  }
+  setTimeout(()=>boot(tries+1), 100);
+}
+boot(0);
+
+const VIEWS=['home','dashboard','iot','learn','eval','labs','about'];
+function show(v){ if(!VIEWS.includes(v)) v='home';
+  VIEWS.forEach(x=>document.getElementById('v-'+x).classList.toggle('on',x===v));
+  document.querySelectorAll('.top a').forEach(a=>a.classList.toggle('on',a.dataset.go===v));
+  window.scrollTo(0,0); if(v==='iot'&&typeof RIG!=='undefined'&&RIG.init)setTimeout(()=>{if(!LV.on&&!RIG.userOff&&lv('lvSrc').value==='demo')lvStart()},60); if(v==='dashboard'){ if(waveChart) waveChart.resize(); if(specChart) specChart.resize(); } }
+document.querySelectorAll('[data-go]').forEach(e=>e.addEventListener('click',()=>show(e.dataset.go)));
+document.querySelectorAll('.view').forEach(v=>v.classList.add('view'));
+// tabs
+document.querySelectorAll('#hwTabs .tab').forEach(b=>b.addEventListener('click',()=>{const t=b.dataset.t;
+  document.querySelectorAll('#hwTabs .tab').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.tp').forEach(p=>p.classList.toggle('on',p.dataset.t===t));}));
+// presets
+document.querySelectorAll('[data-p]').forEach(b=>b.addEventListener('click',()=>{
+  const [f,r,s,n]=b.dataset.p.split(',');
+  const set=(id,v)=>{const e=document.getElementById(id);e.value=v;e.dispatchEvent(new Event('input'));};
+  set('fault',f);set('rpm',r);set('sev',s);set('noise',n);
+  document.querySelectorAll('[data-p]').forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('runBtn').click();}));
+// labs
+const LABS=[
+["Automobile","Basic Electrical & Electronics Lab (EE23C03)","c","DC shunt motor, 3-phase induction motor, single-phase transformer","Electrical-machines practicals that already use these motors","Induction and DC shunt presets"],
+["Automobile","Automotive Electrical & Electronics Systems (AU23503)","c","Starter motor, alternator, induction motor","Practical: measurement of vibration using an accelerometer on an induction motor","The exact experiment VIBRAMOT simulates; use it to prepare or when no rig is free"],
+["Automobile","EV electives: Traction Motors, Motors & Controllers, Motor Drives","c","DC, 1-phase and 3-phase AC, PM, switched reluctance, BLDC; stepper as actuator","Theory courses with no motor lab listed","BLDC preset as a first look at motor condition monitoring"],
+["E&I","Electrical Machines (EI23304)","c","DC shunt motor, DC generator, 3-phase induction, synchronous motor, alternator, single-phase induction, AC and DC drives","Load tests, speed control, V curves, PC-based monitoring of an alternator, study of AC/DC drives","Every main preset; pairs with the PC-based data-acquisition experiments"]];
+function drawLabs(f){ document.getElementById('labGrid').innerHTML=LABS.filter(l=>f==='all'||l[0]===f).map(l=>
+ '<div class="lab"><div class="hd"><div class="dp">'+l[0]+'</div><span class="tag '+l[2]+'">'+(l[2]==='c'?'From syllabus':'Unconfirmed')+'</span></div><h3>'+l[1]+'</h3><dl><dt>Motors: </dt><dd>'+l[3]+'</dd><dt>Experiments: </dt><dd>'+l[4]+'</dd><dt>With VIBRAMOT: </dt><dd>'+l[5]+'</dd></dl></div>').join('');}
+document.querySelectorAll('#labChips .chip').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#labChips .chip').forEach(x=>x.classList.toggle('on',x===b)); drawLabs(b.dataset.f);}));
+drawLabs('all');
+// reveal + counters
+const io=typeof IntersectionObserver!=='undefined'? new IntersectionObserver(es=>es.forEach(e=>{ if(!e.isIntersecting) return; e.target.classList.add('in'); io.unobserve(e.target);
+  e.target.querySelectorAll('[data-count]').forEach(c=>{const t=+c.dataset.count,s=performance.now();(function f(n){const p=Math.min(1,(n-s)/900);c.textContent=Math.round(t*p);if(p<1)requestAnimationFrame(f);})(s);});}),{threshold:.15}) : null;
+document.querySelectorAll('.rv').forEach(e=>io?io.observe(e):e.classList.add('in'));
+document.querySelectorAll('details').forEach(d=>d.open=true);
+show((location.hash||'').replace('#','')||'home');
+
+const MV={th:0,kick:0,last:performance.now(),key:''},HK=['none','imbalance','misalignment','bpfo'];
+const MVT={none:['Healthy motor','Smooth rotation, flat spectrum apart from the 1× shaft line.','Keep to the routine monitoring interval.'],
+imbalance:['Rotor imbalance','Uneven mass throws the shaft outward once per turn: a 1× peak.','Balance the rotor in place; check for dirt or a lost balance weight.'],
+misalignment:['Shaft misalignment','The shafts do not share a centre line, so the coupling flexes twice per turn: a 2× peak.','Realign with a dial indicator or laser tool and check soft foot.'],
+bpfo:['Outer-race bearing fault','A pit on the fixed outer ring is struck by each ball: a peak at BPFO.','Trend the peak and plan a bearing change.'],
+bpfi:['Inner-race bearing fault','A pit on the spinning inner ring is struck by each ball: a peak at BPFI.','Plan bearing replacement.'],
+bsf:['Rolling-element fault','A damaged ball hits both rings as it spins: a peak at BSF.','Replace the bearing at the next stop.']};
+function drawMotor(cv,st){const d=devicePixelRatio||1;if(cv.width!==Math.round(760*d)){cv.width=Math.round(760*d);cv.height=Math.round(300*d)}
+ const c=cv.getContext('2d'),k=d*cv.clientWidth/760;c.setTransform(k,0,0,k,0,0);c.clearRect(0,0,760,300);
+ const g=getComputedStyle(document.documentElement),V=n=>g.getPropertyValue(n).trim(),L=V('--border-hi'),T=V('--text'),Dm=V('--dim'),B=V('--brand'),R=V('--red'),Am=V('--amber'),th=MV.th,f=st.f,sv=st.sev,S=Math.sin,C=Math.cos,PI=Math.PI,BODY='#e2e8f0',ROT='#9fb0c8',CU='#b7692f',W='#fff';
+ let sx=0,sy=0;if(f==='none'){sx=.5*C(th);sy=.5*S(th)}else if(f==='imbalance'){sx=7*sv*C(th);sy=7*sv*S(th)}else if(f==='misalignment'){sx=2*sv*S(2*th);sy=5*sv*S(2*th+1)}else{sy=MV.kick*4*sv;sx=MV.kick*1.5*sv*(Math.random()-.5)}
+ const circ=(x,y,r,fl,sk)=>{c.beginPath();c.arc(x,y,r,0,7);if(fl){c.fillStyle=fl;c.fill()}if(sk){c.strokeStyle=sk;c.lineWidth=2;c.stroke()}};
+ c.save();c.translate(105+sx,138+sy);circ(0,0,96,BODY,L);
+ for(let i=0;i<12;i++){c.beginPath();c.arc(0,0,74,i*PI/6+.07,i*PI/6+.43);c.lineWidth=16;c.strokeStyle=CU;c.stroke()}
+ circ(0,0,56,ROT,L);c.save();c.rotate(th);for(let i=0;i<10;i++){c.rotate(PI/5);c.fillStyle=BODY;c.fillRect(-3,-49,6,13)}
+ circ(0,0,12,W,L);c.fillStyle=Dm;c.fillRect(-2,-12,4,7);if(f==='imbalance'){c.shadowColor=R;c.shadowBlur=12;circ(0,-44,6+9*sv,R);c.shadowBlur=0}c.restore();c.restore();
+ c.fillStyle=L;c.fillRect(215,236,260,5);
+ c.save();c.translate(sx*.6,sy*.6);c.fillStyle=BODY;c.strokeStyle=L;c.lineWidth=2;c.beginPath();c.roundRect(235,88,150,112,10);c.fill();c.stroke();c.fillStyle=CU;c.fillRect(252,96,116,10);c.fillRect(252,182,116,10);c.fillStyle=ROT;c.fillRect(262,114,76,64);
+ c.fillStyle=L;c.fillRect(240,200,34,30);c.fillRect(346,200,34,30);c.fillStyle=Dm;c.fillRect(215,140,190,10);c.fillStyle=B;c.fillRect(398,129,18,32);c.restore();
+ let off=0,ang=0;if(f==='misalignment'){off=11*sv;ang=.12*sv}
+ c.save();c.translate(412+sx*.4,145+off+sy*.4);c.rotate(ang);c.fillStyle=f==='misalignment'?R:B;c.fillRect(0,-16,18,32);c.fillStyle=Dm;c.fillRect(14,-5,48,10);c.translate(98,0);circ(0,0,34,ROT,L);c.rotate(th);for(let i=0;i<4;i++){c.rotate(PI/2);c.fillStyle=W;c.fillRect(6,-4,24,8)}c.restore();
+ const bx=655,by=140,N=st.n,cc=C(st.theta*PI/180),x=st.dd*cc,cage=(1-x)/2*th,pitI=th-PI/2,pitO=-PI/2,wr=a=>{a=(a+PI)%(2*PI);if(a<0)a+=2*PI;return a-PI},br=Math.min(8,PI*38/N*.85);let fl=0;
+ circ(bx,by,62,BODY,L);circ(bx,by,46,W,L);circ(bx,by,31,ROT,L);circ(bx,by,19,W,L);
+ if(f==='bpfo'){c.fillStyle=R;c.beginPath();c.arc(bx+46*C(pitO),by+46*S(pitO),4+5*sv,0,7);c.fill()}
+ if(f==='bpfi'){c.fillStyle=R;c.beginPath();c.arc(bx+31*C(pitI),by+31*S(pitI),4+5*sv,0,7);c.fill()}
+ for(let i=0;i<N;i++){const a=cage+i*2*PI/N,px=bx+38*C(a),py=by+38*S(a);let hit=0;
+  if(f==='bpfo'){const q=Math.abs(wr(a-pitO));if(q<.14)hit=1-q/.14}
+  if(f==='bpfi'){const q=Math.abs(wr(a-pitI));if(q<.14)hit=1-q/.14}
+  if(f==='bsf'&&i===0){const sp=th/(2*st.dd)*(1-x*x),q=Math.abs(S(sp));if(q<.14)hit=1-q/.14;circ(px,py,br,T);c.fillStyle=R;c.beginPath();c.arc(px+br*.75*C(a+sp),py+br*.75*S(a+sp),br*.4,0,7);c.fill();if(hit){c.save();c.globalAlpha=hit;circ(px,py,br+6,null,R);c.restore()}}
+  else{circ(px,py,br,hit?R:T);if(hit){c.save();c.globalAlpha=hit;circ(px,py,br+6,null,R);c.restore()}}
+  if(hit>fl)fl=hit}
+ if(fl>.5)MV.kick=1;
+ c.fillStyle=Dm;c.font='12px Inter,system-ui,sans-serif';c.textAlign='center';c.fillText('End view',105,262);c.fillText('Side view',330,262);c.fillText('Bearing close-up ('+N+' balls)',bx,by+82);
+ if(f!=='none'){c.fillStyle=R;c.font='600 13px Inter,system-ui,sans-serif';c.fillText('Fault: '+MVT[f][0],380,286)}}
+function mvLoop(now){const dt=Math.min(.05,(now-MV.last)/1000);MV.last=now;MV.kick=Math.max(0,MV.kick-dt*7);
+ const sl=document.getElementById('mvSlow'),slow=!sl||sl.checked,rp=+document.getElementById('rpm').value||1500;MV.th+=2*Math.PI*(slow?.3:1.4)*(.6+.4*rp/3600)*dt;
+ const dc=document.getElementById('motorCv');
+ if(dc&&dc.offsetParent){const o=params(),hid=mode==='challenge'&&chal&&!chal.revealed,f=hid?'none':o.fault;
+  drawMotor(dc,{f,sev:Math.max(.25,o.sev),n:o.n,dd:o.dd,theta:o.theta});
+  const key=f+hid;if(key!==MV.key){MV.key=key;const t=MVT[f];document.getElementById('mvCap').innerHTML=hid?'<b>Fault hidden.</b> Read the spectrum and submit your diagnosis. The motor view shows the fault when you reveal it.':'<b>'+t[0]+'.</b> '+t[1]+'<br><b>Action:</b> '+t[2]}}
+ requestAnimationFrame(mvLoop)}
+requestAnimationFrame(mvLoop);
+
+(function(){const cv=document.getElementById('m3d');if(!cv)return;
+if(typeof THREE==='undefined'){document.getElementById('pInfo').textContent='The 3D motor needs an internet connection to load.';return}
+const T=THREE,R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:true});R.setPixelRatio(Math.min(2,devicePixelRatio||1));
+const sc=new T.Scene(),cam=new T.PerspectiveCamera(32,1,.1,100);cam.position.set(0,1.2,10);cam.lookAt(0,0,0);
+sc.add(new T.AmbientLight(0xffffff,.7));const dl=new T.DirectionalLight(0xffffff,.9);dl.position.set(4,6,6);sc.add(dl);
+const g=new T.Group();g.position.x=-.4;sc.add(g);
+const mat=(c,o)=>new T.MeshStandardMaterial(Object.assign({color:c,metalness:.5,roughness:.4},o||{}));
+const cyl=(rt,h,m,x,open,ts,tl)=>{const me=new T.Mesh(new T.CylinderGeometry(rt,rt,h,48,1,!!open,ts||0,tl||Math.PI*2),m);me.rotation.z=Math.PI/2;me.position.x=x||0;return me};
+const D=T.DoubleSide,caseM=mat(0xaeb9c9,{side:D}),stM=mat(0x5d6b82,{side:D}),roM=mat(0x9fb0c8),cuM=mat(0xb7692f,{metalness:.7,roughness:.35}),shM=mat(0xd5dbe5,{metalness:.8,roughness:.25}),flM=mat(0x2563eb,{metalness:.3}),beM=mat(0x7b8aa3),baM=mat(0xf1f5f9,{metalness:.9,roughness:.15}),rdM=mat(0xdc2626,{metalness:.1}),blM=mat(0x1d4ed8,{metalness:.1});
+const S0=Math.PI*55/180,AL=Math.PI*250/180;
+g.add(cyl(1,2,caseM,0,1,S0,AL),cyl(.84,1.7,stM,0,1,S0,AL),cyl(1,.15,caseM,-1.07));
+for(let k=0;k<12;k++){const a=k*Math.PI/6;[-.85,.85].forEach(x=>{const b=new T.Mesh(new T.BoxGeometry(.28,.15,.26),cuM);b.position.set(x,.76*Math.sin(a),.76*Math.cos(a));b.rotation.x=-a;g.add(b)})}
+const rot=new T.Group();g.add(rot);rot.add(cyl(.55,1.5,roM,0),cyl(.13,4.4,shM,.35),cyl(.55,.3,mat(0x4b5563),2.1),cyl(.5,.12,mat(0x111827),2.1));
+for(let k=0;k<12;k++){const a=k*Math.PI/6,b=new T.Mesh(new T.BoxGeometry(1.52,.07,.07),mat(0x334155));b.position.set(0,.55*Math.sin(a),.55*Math.cos(a));rot.add(b)}
+g.add(new T.Mesh(new T.BoxGeometry(.18,2.4,2.4),flM));g.children[g.children.length-1].position.x=1.09;g.add(cyl(.5,.1,flM,1.22));
+const base=new T.Mesh(new T.BoxGeometry(2.6,.12,1.9),mat(0x94a3b8));base.position.y=-1.12;g.add(base);
+const cages=[];[-.9,.95].forEach(x=>{const o=new T.Mesh(new T.TorusGeometry(.3,.06,16,40),beM),i=new T.Mesh(new T.TorusGeometry(.18,.05,16,40),beM);o.rotation.y=i.rotation.y=Math.PI/2;o.position.x=i.position.x=x;g.add(o,i);
+ const c=new T.Group();c.position.x=x;for(let k=0;k<8;k++){const a=k*Math.PI/4,b=new T.Mesh(new T.SphereGeometry(.045,12,12),baM);b.position.set(0,.24*Math.sin(a),.24*Math.cos(a));c.add(b)}g.add(c);cages.push(c)});
+const wire=(m,dz,dy)=>new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([new T.Vector3(-.5,.98,.05+dz),new T.Vector3(-.6,1.5+dy,.2+dz),new T.Vector3(-1.2,1.75+dy,.6+dz),new T.Vector3(-1.9,1.5+dy,.9+dz)]),24,.035,8),m);
+g.add(wire(rdM,0,0),wire(blM,.09,.04));
+const PT=[['Flange bracket',[1.1,.95,.95],[flM],'Mounts the motor on the machine and holds the output-side bearing. Soft foot and misalignment show up here.'],
+['Motor case',[-.6,.95,.4],[caseM],'The frame that carries the stator and protects the windings. A loose foot or cracked mount makes the whole motor rattle.'],
+['Stator',[.1,.45,.82],[stM,cuM],'The fixed iron core with copper windings. It creates the rotating magnetic field that turns the rotor.'],
+['Rotor',[-.15,-.15,.56],[roM],'The rotating core. Uneven mass here is rotor imbalance, seen as a 1× peak.'],
+['Ball bearing',[-.9,-.45,.3],[beM,baM],'Balls roll between an inner and outer ring. Pits on the outer ring, inner ring or a ball give the BPFO, BPFI and BSF peaks.'],
+['Output shaft',[2.5,.2,.2],[shM],'Carries torque to the load through a pulley or coupling. Shaft misalignment shows up as a 2× peak.'],
+['Lead wires',[-1.9,1.5,.9],[rdM,blM],'Bring the supply to the windings. Always isolate and lock out before touching them.']];
+const box=document.getElementById('m3dL'),info=document.getElementById('pInfo'),labels=PT.map(p=>{const el=document.createElement('button');el.className='pl3d';el.textContent=p[0];const o={a:new T.Vector3(...p[1]),el,m:p[2],n:p[0],d:p[3]};el.onclick=()=>pick(o);return o});
+function pick(o){labels.forEach(l=>{const on=l===o;l.el.classList.toggle('on',on);l.m.forEach(m=>{m.emissive.setHex(on?0x1d4ed8:0);m.emissiveIntensity=on?.55:0})});info.innerHTML='<b>'+o.n+'.</b> '+o.d}
+let rx=.3,ry=-.65,drag=null,last=performance.now();
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing'});
+addEventListener('pointerup',()=>{drag=null;cv.style.cursor='grab'});
+cv.addEventListener('pointermove',e=>{if(!drag)return;ry+=(e.clientX-drag[0])*.01;rx=Math.max(-1.2,Math.min(1.2,rx+(e.clientY-drag[1])*.01));drag=[e.clientX,e.clientY]});
+document.getElementById('m3dReset').onclick=()=>{rx=.3;ry=-.65};
+(function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;
+ if(cv.offsetParent){const w=cv.clientWidth,h=cv.clientHeight;if(cv.width!==Math.round(w*R.getPixelRatio())){R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+  if(!drag&&document.getElementById('m3dAuto').checked)ry+=dt*.35;
+  g.rotation.set(rx,ry,0);rot.rotation.x+=dt*6;cages.forEach(c=>c.rotation.x=rot.rotation.x*.4);
+  g.updateMatrixWorld();R.render(sc,cam);
+  labels.forEach(l=>{const v=l.a.clone();g.localToWorld(v);v.project(cam);l.el.style.left=(v.x*.5+.5)*w+'px';l.el.style.top=(-v.y*.5+.5)*h+'px'})}
+ requestAnimationFrame(loop)})(last);
+})();
+const BSTEPS=["Lock out the supply, uncouple the load and remove the end shield.","Note the bearing number (for example 6205) and which end it came from.","Pull the old bearing with a puller that grips the ring being removed. Never hammer on the balls or cage.","Inspect the shaft and housing seats for wear, scoring or discolouration, and compare the fits with the datasheet.","Fit the new bearing: warm it evenly to about 80–100 °C with a bearing heater (not a flame), or press it on by the ring that has the tight fit.","Pack the specified grease in the correct amount. Over-greasing makes the bearing run hot.","Reassemble, check the shaft turns freely by hand, realign the coupling and run the motor."];
+const BTOOLS="Bearing puller, bearing heater or press, feeler gauge, micrometer, correct bearing and grease, dial indicator.";
+const FX=[
+{n:"Rotor imbalance",pk:"Expected peak: 1× shaft speed",c:["Strong steady 1× peak with a small 2×, highest in the radial direction.","The peak stays when the load is uncoupled and grows quickly with speed.","Look for dirt on the rotor or fan, missing balance weights, a damaged fan or a bent shaft."],
+ s:["Lock out the supply and let the rotor stop.","Clean the rotor, fan and cooling passages of dust, grease and debris.","Check that fan blades, keys, set screws and balance weights are present and tight.","Turn the shaft by hand with a dial indicator on it. A bent shaft goes to a workshop.","Balance: fix a trial weight, run, note the 1× vibration, and move the weight until the 1× reading is lowest. A portable balancer or a vibration-meter app does this. Wide rotors need two-plane balancing in a workshop.","Fix the final weight permanently with a screw, weld or epoxy balance weight.","Refit guards, run, and compare the 1× level with the reading before."],
+ v:"The 1× reading falls to a small value and the motor runs smoothly through its speed range.",t:"Dial indicator, trial weights, balancer or vibration meter, cleaning supplies."},
+{n:"Shaft misalignment",pk:"Expected peak: 2× shaft speed",c:["Strong 2× peak, usually with 1× and 3×, and high vibration along the shaft (axial).","Vibration drops when the load is uncoupled.","Check the coupling for heat, oil or worn rubber, and check each foot for a gap (soft foot)."],
+ s:["Lock out the supply and uncouple the shafts.","Check soft foot: loosen one foot bolt at a time and measure the lift with a feeler gauge. Shim any foot that lifts by more than about 0.05 mm.","Check that the base is rigid and that pipes or cables are not pulling the machine.","Align with a straight edge for a quick check, then a dial indicator (rim and face, or reverse dial) or a laser tool. Measure both offset and angle, in the vertical and horizontal planes.","Move the motor with shims (vertical) and jacking bolts (horizontal) until the readings are within the coupling maker's tolerance.","Tighten the bolts and recheck, because tightening shifts the alignment. Replace a worn coupling element.","Run the motor and compare the 2× peak with the reading before."],
+ v:"The 2× peak and the axial vibration fall, and the coupling runs cool.",t:"Feeler gauge, shims, straight edge, dial indicator or laser alignment tool, torque wrench."},
+{n:"Outer-race bearing fault",pk:"Expected peak: BPFO = (N/2)·f_r·[1 − (d/D)cosθ]",c:["Peak at BPFO, often with harmonics.","The bearing is hotter or noisier than its twin, or feels rough when turned by hand.","Listen with a stethoscope or long screwdriver and check the grease for metal or discolouration."],
+ s:["Root cause first: check the housing fit and bore, seals and contamination, and overload.",...BSTEPS],v:"The BPFO peak is gone and the bearing runs at a normal temperature.",t:BTOOLS},
+{n:"Inner-race bearing fault",pk:"Expected peak: BPFI = (N/2)·f_r·[1 + (d/D)cosθ]",c:["Peak at BPFI, often with sidebands spaced at 1× shaft speed.","Bearing noise and heat on one end of the motor.","Look at the shaft seat for fretting or a loose fit, and at the supply for shaft currents when a drive is used."],
+ s:["Root cause first: check the shaft fit and the shaft current path (fluting marks) on drive-fed motors.",...BSTEPS],v:"The BPFI peak is gone and the shaft seat is clean and tight.",t:BTOOLS},
+{n:"Rolling-element fault",pk:"Expected peak: BSF = (D/2d)·f_r·[1 − (d/D)²cos²θ]",c:["Peak at BSF, usually lower than the ring frequencies.","Irregular rumble that changes with load.","Check the grease for debris, moisture or rust."],
+ s:["Root cause first: look for debris, water or corrosion and replace damaged seals.",...BSTEPS],v:"The BSF peak is gone and the new seals keep the grease clean.",t:BTOOLS}];
+
+
+function fixUpdate(k,id){const p=document.getElementById(id||'fixPanel'),i={imbalance:0,misalignment:1,bpfo:2,bpfi:3,bsf:4}[k];p.classList.remove('hid');
+ if(i===undefined){p.innerHTML='<label class="label">WHAT TO DO</label><p class="note" style="font-size:13px">No fault detected. Keep to the routine monitoring interval and compare future readings with this baseline.</p>';return}
+ const f=FX[i];p.innerHTML='<label class="label">HOW TO FIX IT ON A REAL MOTOR</label><div class="fxp" style="border:0;padding:0"><h3 style="font-size:17px">'+f.n+'</h3><p class="sub2">'+f.pk+'. Lock out and tag out the supply before touching the motor.</p><div class="fxg"><div><h4>Confirm it on the motor</h4><ul>'+f.c.map(x=>'<li>'+x+'</li>').join('')+'</ul><h4>Tools</h4><p>'+f.t+'</p><h4>Check it worked</h4><p>'+f.v+'</p></div><div><h4>Fix it, step by step</h4><ol>'+f.s.map(x=>'<li>'+x+'</li>').join('')+'</ol></div></div></div>'}
+
+const LV={base:null,last:null,timer:null,port:null,rd:null,mq:null,n:0,on:false},lv=id=>document.getElementById(id);
+const FW=`#include <Wire.h>
+const int FS = 1600, CH = 2048, TACHO = 4;
+const float N_BALLS = 9, DD = 0.2;               // from your bearing datasheet
+volatile uint32_t lastPulse = 0, period = 0;
+void IRAM_ATTR onPulse() { uint32_t t = micros(); period = t - lastPulse; lastPulse = t; }
+void wr(uint8_t r, uint8_t v) { Wire.beginTransmission(0x53); Wire.write(r); Wire.write(v); Wire.endTransmission(); }
+int16_t readZ() { Wire.beginTransmission(0x53); Wire.write(0x36); Wire.endTransmission(false);
+  Wire.requestFrom(0x53, 2); int16_t lo = Wire.read(), hi = Wire.read(); return (hi << 8) | (lo & 0xFF); }
+void setup() {
+  Serial.begin(921600); Wire.begin(); Wire.setClock(400000);
+  wr(0x2D, 0x08); wr(0x31, 0x08); wr(0x2C, 0x0E);  // measure, full resolution, 1600 Hz
+  pinMode(TACHO, INPUT_PULLUP); attachInterrupt(TACHO, onPulse, FALLING);
+}
+void loop() {
+  static int16_t x[CH]; uint32_t next = micros();
+  for (int i = 0; i < CH; i++) { while (micros() < next); next += 1000000 / FS; x[i] = readZ(); }
+  float rpm = period ? 60e6 / period : 0;
+  Serial.printf("{\\"id\\":\\"motor-01\\",\\"fs\\":%d,\\"rpm\\":%.0f,\\"n\\":%.0f,\\"dd\\":%.2f,\\"x\\":[", FS, rpm, N_BALLS, DD);
+  for (int i = 0; i < CH; i++) Serial.printf("%d%s", x[i], i < CH - 1 ? "," : "");
+  Serial.println("]}");
+}`;
+lv('lvFw').textContent=FW;
+function lvMsg(t){const e=lv('lvMsg');e.textContent=t||'';e.style.display=t?'block':'none'}
+function liveIngest(p){if(!p||!p.x||p.x.length<N)return;const fs=+p.fs||1600,df=fs/N;let x=Float64Array.from(p.x.slice(0,N));const mean=x.reduce((a,b)=>a+b,0)/N;x=x.map(v=>v-mean);
+ const m0=spectrum(x,true);let rpm=+p.rpm,src='tachometer';
+ if(!(rpm>0)){let b=Math.ceil(8/df);for(let i=b;i<=Math.floor(100/df);i++)if(m0[i]>m0[b])b=i;rpm=Math.round(b*df*60);src='estimated'}
+ const o={fs,rpm,n:+p.n||9,dd:+p.dd||.2,theta:+p.theta||0},b1=Math.round(rpm/60/df);let pk1=0;for(let i=Math.max(1,b1-2);i<=b1+2;i++)pk1=Math.max(pk1,m0[i]);
+ LV.last={pk1};LV.n++;LV.rpmNow=rpm;const sc=.5/((LV.base||pk1)||1),mag=m0.map(v=>v*sc),res=scan(mag,o,true),top=res[0],det=top.score>1;
+ lv('lvId').textContent=p.id||'device';lv('lvFs').textContent=fs+' Hz';lv('lvRpm').textContent=rpm+' rpm ('+src+')';lv('lvT').textContent=p.t!=null?p.t+' °C':'not sent';lv('lvN').textContent=LV.n;lv('lvBs').textContent=LV.base?'captured':'not captured';
+ lv('lvStatus').className='status '+(det?'fault':'ok');lv('lvStatusT').textContent=det?'FAULT DETECTED: '+top.name.toUpperCase():'NORMAL';
+ lv('lvStatusS').textContent=det?'Peak at '+top.fa.toFixed(1)+' Hz is '+top.score.toFixed(1)+'× its threshold.':(LV.base?'No candidate frequency exceeds its threshold.':'No bearing or misalignment peak found. Capture a healthy baseline to enable imbalance detection.');
+ lv('lvScan').innerHTML=res.map(c=>'<div class="cand'+(c.score>1?' hit':'')+'"><span>'+c.name+'</span><span>'+c.fa.toFixed(1)+' Hz'+(c.aliased?' (aliased)':'')+'</span><span>'+(c.masked?'unresolved':c.score.toFixed(1)+'×')+'</span></div>').join('');
+ fixUpdate(det?top.k:'none','liveFix');liveDraw(mag,res,o);LV.magS=mag;LV.o=o;LV.detName=det?top.name:null;LV.detKey=det?top.k:'none';if(typeof RIG!=='undefined')RIG.arrive()}
+function liveDraw(mag,res,o){const cv=lv('lvCv'),d=devicePixelRatio||1,w=cv.clientWidth,h=200;if(cv.width!==Math.round(w*d)){cv.width=Math.round(w*d);cv.height=h*d}
+ const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,w,h);const g=getComputedStyle(document.documentElement),V=n=>g.getPropertyValue(n).trim(),df=o.fs/N,fmax=Math.min(o.fs/2,Math.max(...res.map(r=>r.fa),o.rpm/60)*1.35),kmax=Math.floor(fmax/df),my=Math.max(...mag.slice(1,kmax),.7)*1.1,X=f=>34+f/fmax*(w-44),Y=a=>h-22-a/my*(h-34),ab={imbalance:'1×',misalignment:'2×',bpfo:'BPFO',bpfi:'BPFI',bsf:'BSF'};
+ c.font='11px Inter,system-ui,sans-serif';c.textAlign='center';c.fillStyle=V('--dim');for(let i=0;i<=5;i++){const f=fmax*i/5;c.fillText(Math.round(f)+' Hz',X(f),h-6)}
+ res.forEach(r=>{if(r.fa>fmax)return;c.strokeStyle=r.score>1?V('--red'):V('--border-hi');c.setLineDash([4,4]);c.beginPath();c.moveTo(X(r.fa),14);c.lineTo(X(r.fa),h-22);c.stroke();c.setLineDash([]);c.fillStyle=r.score>1?V('--red'):V('--dim');c.fillText(ab[r.k],X(r.fa),10)});
+ c.strokeStyle=V('--brand');c.lineWidth=1.5;c.beginPath();for(let k=1;k<kmax;k++){const x=X(k*df),y=Y(mag[k]);k>1?c.lineTo(x,y):c.moveTo(x,y)}c.stroke()}
+function demoPkt(f){const rp=+lv('rigRpm').value||1500,sv=+lv('rigSev').value||.6,o={rpm:rp,fault:f,sev:sv,noise:.15,n:9,dd:.2,theta:0,fs:RIGCFG.fs};return{id:RIGCFG.id,fs:RIGCFG.fs,rpm:rp,n:9,dd:.2,t:(38+Math.random()*2).toFixed(1),x:Array.from(simulate(o),v=>v*.35+1)}}
+async function lvStop(){clearInterval(LV.timer);try{if(LV.rd)await LV.rd.cancel();if(LV.port)await LV.port.close()}catch(e){}try{if(LV.mq)LV.mq.end()}catch(e){}LV.rd=LV.port=LV.mq=null;LV.on=false;lv('lvBtn').textContent='Connect';lv('lvState').textContent='Disconnected'}
+async function lvStart(){const s=lv('lvSrc').value;lvMsg('');LV.src=s;
+ try{if(s==='demo'){rigBase();RIG.t=0;RIG.fired=false}
+ else if(s==='serial'){if(!navigator.serial){lvMsg('Web Serial is not available here. Open the hosted page in Chrome or Edge.');return}
+  LV.port=await navigator.serial.requestPort();await LV.port.open({baudRate:+lv('lvBaud').value||921600});LV.rd=LV.port.readable.pipeThrough(new TextDecoderStream()).getReader();let buf='';
+  (async()=>{try{for(;;){const{value,done}=await LV.rd.read();if(done)break;buf+=value;let i;while((i=buf.indexOf('\n'))>=0){const ln=buf.slice(0,i).trim();buf=buf.slice(i+1);if(ln[0]==='{')try{liveIngest(JSON.parse(ln))}catch(e){}}}}catch(e){}})()}
+ else{if(typeof mqtt==='undefined'){lvMsg('The MQTT library did not load. Check your internet connection.');return}
+  LV.mq=mqtt.connect(lv('lvUrl').value);LV.mq.on('connect',()=>{LV.mq.subscribe(lv('lvTopic').value);lv('lvState').textContent='Receiving'});
+  LV.mq.on('message',(t,m)=>{try{liveIngest(JSON.parse(m.toString()))}catch(e){}});LV.mq.on('error',e=>lvMsg('MQTT error: '+e.message))}
+ LV.on=true;lv('lvBtn').textContent='Disconnect';if(s!=='mqtt')lv('lvState').textContent='Receiving'}catch(e){lvMsg('Could not connect: '+e.message);lvStop()}}
+lv('lvBtn').onclick=()=>{if(LV.on){RIG.userOff=true;lvStop()}else{RIG.userOff=false;lvStart()}};
+lv('lvBase').onclick=()=>{if(LV.last){LV.base=LV.last.pk1;lv('lvBs').textContent='captured'}else lvMsg('Connect first, then capture the baseline while the motor is healthy.')};
+lv('lvSrc').onchange=()=>{const s=lv('lvSrc').value;lv('lvMq').classList.toggle('hid',s!=='mqtt');lv('lvDm').classList.toggle('hid',s!=='demo');lv('lvSr').classList.toggle('hid',s!=='serial');if(LV.on)lvStop()};
+
+/* ===== Animated hardware rig ===== */
+function rigBase(){liveIngest(demoPkt('none'));LV.base=LV.last.pk1;liveIngest(demoPkt(lv('lvDemoF').value))}
+var RIGCFG={fs:2000,id:'esp32-motor-01'};
+var RIG={init:1,t:0,clk:0,ang:0,spd:0,flash:0,pkT:-1,fired:false,userOff:false,rpm:1500,fault:'none',mask:-1,tachGlow:0,pulses:[],lastTop:false,last:performance.now()};
+RIG.arrive=function(){RIG.flash=1;if(LV.src&&LV.src!=='demo'){RIG.pkT=0;RIG.t=0;RIG.rpm=LV.rpmNow||RIG.rpm;RIG.fault=LV.detKey||'none'}};
+(function(){
+const cv=lv('rigCv'),W=1000,H=340,SLOW=.1;
+const P={SDA:[[178,100],[178,84],[380,84],[380,135],[405,135]],SCL:[[192,100],[192,90],[392,90],[392,155],[405,155]],TACH:[[308,101],[360,101],[360,195],[405,195]],
+ USB:[[545,213],[580,213],[580,262],[780,262],[780,232],[795,232]],WIFI:[[475,105],[475,60],[620,60],[680,60],[740,60],[885,60],[885,125]]};
+function len(p){let L=0;for(let i=1;i<p.length;i++)L+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);return L}
+function at(p,f){let L=len(p)*Math.min(Math.max(f,0),1);for(let i=1;i<p.length;i++){const d=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);if(L<=d||i===p.length-1){const u=d?L/d:0;return[p[i-1][0]+(p[i][0]-p[i-1][0])*u,p[i-1][1]+(p[i][1]-p[i-1][1])*u]}L-=d}return p[0]}
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+function line(c,p,col,w,dash){c.strokeStyle=col;c.lineWidth=w;c.setLineDash(dash||[]);c.beginPath();p.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]));c.stroke();c.setLineDash([])}
+function txt(c,t,x,y,sz,col,al,wt){c.font=(wt||500)+' '+sz+'px Inter,system-ui,sans-serif';c.fillStyle=col;c.textAlign=al||'left';c.fillText(t,x,y)}
+function dots(c,p,col,n,sp,r){for(let i=0;i<n;i++){const f=((RIG.clk*sp+i/n)%1),q=at(p,f);c.fillStyle=col;c.beginPath();c.arc(q[0],q[1],r||2.4,0,7);c.fill()}}
+function ratio(f,sv){const fr=1,ff=faultFreq(f,fr,9,.2,0);return ff||0}
+const MCU={
+ esp32:{name:'ESP32 DevKit',t1:'ESP32',t2:'WROOM-32',col:'#0b1f4d',mod:'#d1d9e6',wifi:1,fs:2000,id:'esp32-motor-01',p:['SDA 21','SCL 22','TACH 4'],adc:'ADC 34',note:'Dual-core, 520 KB RAM: holds the 2048-sample window easily and sends over Wi-Fi or USB.'},
+ esp8266:{name:'ESP8266 NodeMCU',t1:'ESP8266',t2:'ESP-12E',col:'#374151',mod:'#e5e7eb',wifi:1,fs:1600,id:'esp8266-motor-01',p:['SDA D2','SCL D1','TACH D5'],adc:'ADC A0',note:'Cheap Wi-Fi board, about 80 KB RAM, so it samples at 1600 Hz and sends in smaller chunks.'},
+ pico:{name:'Raspberry Pi Pico W',t1:'RP2040',t2:'Pico W',col:'#166534',mod:'#1f2937',wifi:1,fs:2000,id:'pico-motor-01',p:['SDA GP4','SCL GP5','TACH GP2'],adc:'ADC GP26',note:'264 KB RAM and a fast ADC: a good low-cost choice, programmed in MicroPython or C.'},
+ pi4:{name:'Raspberry Pi 4',t1:'Pi 4',t2:'BCM2711',col:'#9d174d',mod:'#e5e7eb',wifi:1,fs:1000,id:'pi4-motor-01',p:['SDA GPIO2','SCL GPIO3','TACH GPIO17'],adc:'ADS1115',note:'Runs Linux and Python. Polling I²C from Python reaches about 1 kHz, and analog sensors need an ADS1115 converter (860 samples/s).'},
+ stm32:{name:'STM32 Blue Pill',t1:'STM32',t2:'F103C8',col:'#1e40af',mod:'#1f2937',wifi:0,fs:4000,id:'stm32-motor-01',p:['SDA PB7','SCL PB6','TACH PA8'],adc:'ADC PA1',note:'Fast timers and ADC, 20 KB RAM, no Wi-Fi on board. Sends over USB serial, or add an ESP-01 for Wi-Fi.'},
+ uno:{name:'Arduino Uno',t1:'ARDUINO',t2:'UNO R3',col:'#0f766e',mod:'#e5e7eb',wifi:0,fs:2000,id:'uno-motor-01',p:['SDA A4','SCL A5','TACH D2'],adc:'ADC A0',note:'Only 2 KB RAM, so it cannot hold 2048 samples: it streams samples over USB and the PC builds the window. No Wi-Fi.'}};
+const SEN={
+ adxl345:{name:'ADXL345 accelerometer',t:'ADXL345',col:'#1d4ed8',analog:0,fs:3200,note:'I²C, 3.3 V, 3200 Hz output rate (1600 Hz bandwidth).'},
+ mpu6050:{name:'MPU6050 IMU',t:'MPU6050',col:'#7c3aed',analog:0,fs:1000,note:'I²C accelerometer + gyro, cheap and common. The accelerometer is limited to 1 kHz output (about 260 Hz bandwidth).'},
+ lis3dh:{name:'LIS3DH accelerometer',t:'LIS3DH',col:'#0d9488',analog:0,fs:1344,note:'I²C, low noise, 3.3 V, 1344 Hz output rate in high-resolution mode.'},
+ adxl335:{name:'ADXL335 analog accelerometer',t:'ADXL335',col:'#ea580c',analog:1,fs:1600,note:'Analog output into an ADC pin, about 1.6 kHz bandwidth on X and Y.'},
+ piezo:{name:'Piezo disc + amplifier',t:'PIEZO',col:'#16a34a',analog:1,fs:4000,note:'Very cheap analog sensor. Needs an amplifier and gives relative, not calibrated, amplitude.'}};
+function FSE(M,S){return (M===MCU.pi4&&S.analog)?800:Math.min(M.fs,S.fs)}
+const BR='#2563eb',NV='#0b1f4d',RD='#dc2626',OK='#16a34a',AM='#ea580c',GR='#94a3b8';
+function frame(now){requestAnimationFrame(frame);let dt=Math.min(.05,(now-RIG.last)/1000);RIG.last=now;
+ if(!lv('v-iot').classList.contains('on'))return;
+ const M=MCU[lv('rigMcu').value],S=SEN[lv('rigSen').value];RIGCFG.fs=FSE(M,S);RIGCFG.id=M.id;
+ const demo=LV.src==='demo'||!LV.on,on=LV.on,virt=on&&LV.src==='demo';
+ let fault,rpm,sev;
+ if(virt||!on){fault=lv('lvDemoF').value;rpm=+lv('rigRpm').value;sev=+lv('rigSev').value}else{fault=RIG.fault;rpm=RIG.rpm;sev=.6}
+ if(!on){fault='none'}
+ const tgt=on?rpm/60*2*Math.PI*SLOW:0;RIG.spd+=(tgt-RIG.spd)*Math.min(1,dt*3);RIG.ang+=RIG.spd*dt;
+ if(on){RIG.clk+=dt;RIG.t+=dt}
+ RIG.flash=Math.max(0,RIG.flash-dt*1.6);
+ /* timeline */
+ let samp=0,pk=-1,phase=0;
+ if(virt){const t=RIG.t;if(t>=2.8&&!RIG.fired){RIG.fired=true;liveIngest(demoPkt(lv('lvDemoF').value))}
+  if(t>=3.1){RIG.t=0;RIG.fired=false}
+  samp=Math.min(1,t/1.8);phase=t<1.8?0:t<2.1?1:t<2.8?2:3;if(phase===2)pk=(t-2.1)/.7}
+ else if(on){if(RIG.pkT>=0){RIG.pkT+=dt;if(RIG.pkT>=.7)RIG.pkT=-1}samp=Math.min(1,(RIG.t%1.8)/1.8);if(RIG.pkT>=0){pk=RIG.pkT/.7;phase=2}}
+ const route=!M.wifi||LV.src==='serial'?'USB':LV.src==='mqtt'?'WIFI':(lv('rigRoute').value==='usb'?'USB':'WIFI');
+ /* tacho */
+ const topNow=Math.cos(RIG.ang)>.985&&Math.sin(RIG.ang)<0;
+ if(on&&topNow&&!RIG.lastTop){RIG.tachGlow=1;RIG.pulses.push(0)}RIG.lastTop=topNow;
+ RIG.tachGlow=Math.max(0,RIG.tachGlow-dt*5);RIG.pulses=RIG.pulses.map(v=>v+dt*1.4).filter(v=>v<1);
+ /* stage chips */
+ const mask=!on?0:pk>=0?1<<4:phase===1?1<<3:RIG.flash>.3?1<<5:7;
+ if(mask!==RIG.mask){RIG.mask=mask;document.querySelectorAll('#rigSteps .chip').forEach(e=>e.classList.toggle('on',!!(mask&(1<<(+e.dataset.i)))));
+  const b=lv('rigBadge');b.textContent=on?(virt?'RUNNING · SIMULATED':'RECEIVING · '+(route==='USB'?'USB':'MQTT')):'OFFLINE';b.classList.toggle('on',on)}
+ /* canvas */
+ const d=devicePixelRatio||1,w=cv.clientWidth,h=w*H/W;if(cv.width!==Math.round(w*d)||cv.height!==Math.round(h*d)){cv.width=Math.round(w*d);cv.height=Math.round(h*d)}
+ const c=cv.getContext('2d');c.setTransform(d*w/W,0,0,d*w/W,0,0);c.clearRect(0,0,W,H);
+ c.fillStyle='#f8fafc';c.fillRect(0,0,W,H);c.fillStyle='#e2e8f0';for(let x=20;x<W;x+=40)for(let y=20;y<H;y+=40){c.fillRect(x,y,1.5,1.5)}
+ /* table */
+ c.fillStyle='#cbd5e1';c.fillRect(20,262,500,6);c.fillStyle='#e2e8f0';c.fillRect(30,268,480,3);
+ const ff=faultFreq(fault,1,9,.2,0)||0,A=fault==='none'?0:sev;
+ /* vibration */
+ const a=RIG.ang;let vx=0,vy=0;
+ if(on){if(fault==='imbalance'){vy=A*3.6*Math.sin(a);vx=A*1.4*Math.cos(a)}else if(fault==='misalignment'){vy=A*2.6*Math.sin(2*a);vx=A*1.8*Math.sin(2*a+1)}else if(fault!=='none'){vy=A*1.9*Math.sin(a*ff)+A*.8*Math.sin(a*ff*2.3);vx=A*.9*Math.cos(a*ff)}else{vy=.3*Math.sin(a*7)}}
+ /* wires */
+ const act=on&&phase===0;
+ line(c,P.SDA,'#fda4af',2.2);if(!S.analog)line(c,P.SCL,'#93c5fd',2.2);line(c,P.TACH,'#fcd34d',2.2);
+ if(on){dots(c,P.SDA,RD,6,.9,2.2);if(!S.analog)dots(c,P.SCL,BR,6,.9,2.2);RIG.pulses.forEach(f=>{const q=at(P.TACH,f);c.fillStyle=AM;c.beginPath();c.arc(q[0],q[1],4,0,7);c.fill()})}
+ txt(c,S.analog?'analog out':'I²C SDA',250,80,10,'#be123c','center',600);if(!S.analog)txt(c,'I²C SCL',330,96,10,'#1d4ed8','center',600);txt(c,'tacho',335,117,10,'#b45309','center',600);
+ /* motor group */
+ c.save();c.translate(vx,vy);
+ rr(c,44,240,160,22,3);c.fillStyle='#94a3b8';c.fill();
+ rr(c,50,120,150,120,10);const g=c.createLinearGradient(0,120,0,240);g.addColorStop(0,'#e8eef8');g.addColorStop(1,'#c3d0e6');c.fillStyle=g;c.fill();c.strokeStyle=GR;c.lineWidth=1.4;c.stroke();
+ c.strokeStyle='#b0bed6';c.lineWidth=1.2;for(let x=62;x<196;x+=12){c.beginPath();c.moveTo(x,128);c.lineTo(x,232);c.stroke()}
+ rr(c,92,102,48,18,3);c.fillStyle='#64748b';c.fill();txt(c,'TERMINALS',116,114,7.5,'#fff','center',600);
+ rr(c,200,140,18,80,4);c.fillStyle='#64748b';c.fill();
+ rr(c,90,168,76,26,4);c.fillStyle='#fff';c.fill();c.strokeStyle=GR;c.lineWidth=1;c.stroke();txt(c,'3~ MOTOR',128,185,11,NV,'center',700);
+ /* shaft (bent for misalignment) */
+ c.strokeStyle='#cbd5e1';c.lineWidth=14;c.lineCap='butt';c.beginPath();c.moveTo(218,180);c.lineTo(250,180+(fault==='misalignment'&&on?5*A:0));c.lineTo(285,180);c.stroke();
+ c.strokeStyle='#94a3b8';c.lineWidth=1.2;c.beginPath();c.moveTo(218,173);c.lineTo(250,173+(fault==='misalignment'&&on?5*A:0));c.lineTo(285,173);c.stroke();
+ /* bearing block */
+ const bf=on&&(fault==='bpfo'||fault==='bpfi'||fault==='bsf'),pulse=bf?.5+.5*Math.sin(RIG.clk*9):0;
+ rr(c,232,186,36,54,5);c.fillStyle=bf?'rgba(220,38,38,'+(.25+.45*pulse)+')':'#94a3b8';c.fill();c.strokeStyle=bf?RD:'#64748b';c.lineWidth=bf?2:1.2;c.stroke();
+ txt(c,'BEARING',250,228,7.5,bf?'#7f1d1d':'#fff','center',700);
+ /* disc */
+ c.save();c.translate(285,180);c.rotate(a);c.beginPath();c.arc(0,0,38,0,7);c.fillStyle='#fff';c.fill();c.strokeStyle='#64748b';c.lineWidth=3;c.stroke();
+ c.strokeStyle='#cbd5e1';c.lineWidth=2;for(let i=0;i<6;i++){c.rotate(Math.PI/3);c.beginPath();c.moveTo(6,0);c.lineTo(32,0);c.stroke()}
+ c.fillStyle='#e2e8f0';c.beginPath();c.arc(0,0,7,0,7);c.fill();c.strokeStyle='#64748b';c.lineWidth=1.5;c.stroke();
+ c.save();c.rotate(-Math.PI/2);c.fillStyle='#f1f5f9';c.fillRect(33,-5,8,10);c.fillStyle='#94a3b8';c.fillRect(35,-3,4,6);c.restore();
+ if(on&&fault==='imbalance'){c.fillStyle=RD;c.beginPath();c.arc(27,0,7,0,7);c.fill();c.strokeStyle='#7f1d1d';c.lineWidth=1.4;c.stroke()}
+ c.restore();
+ /* tacho sensor */
+ rr(c,264,88,44,20,3);c.fillStyle=NV;c.fill();txt(c,'IR TACHO',286,101,7.5,'#fff','center',600);
+ c.strokeStyle='rgba(220,38,38,'+(.25+.75*RIG.tachGlow)+')';c.lineWidth=1.5+RIG.tachGlow*2;c.setLineDash([3,3]);c.beginPath();c.moveTo(286,108);c.lineTo(286,141);c.stroke();c.setLineDash([]);
+ /* ADXL345 */
+ rr(c,158,96,44,20,3);c.fillStyle=S.col;c.fill();c.fillStyle='#0b1f4d';c.fillRect(172,100,14,10);txt(c,S.t,180,92,8.5,S.col,'center',700);
+ if(on&&A>0){for(let i=0;i<3;i++){const ph=((RIG.clk*1.3+i/3)%1);c.strokeStyle='rgba(37,99,235,'+(1-ph)*.6+')';c.lineWidth=1.4;c.beginPath();c.arc(180,106,8+ph*22*(.6+A),Math.PI*1.1,Math.PI*1.9);c.stroke()}}
+ c.restore();
+ /* scope */
+ rr(c,40,12,210,54,6);c.fillStyle='#fff';c.fill();c.strokeStyle='#cbd5e1';c.lineWidth=1;c.stroke();
+ txt(c,'x(t) '+S.t,46,24,8.5,'#64748b','left',600);
+ c.save();c.beginPath();c.rect(42,26,206,38);c.clip();c.strokeStyle=on?BR:'#cbd5e1';c.lineWidth=1.4;c.beginPath();
+ for(let i=0;i<=200;i++){const ph=a-(200-i)/200*4*2*Math.PI,v=Math.sin(ph)+(A?A*1.5*Math.sin(ff*ph):0)+Math.sin(ph*37.1)*.07+Math.sin(ph*91.7)*.05,y=45-v/(1+A*1.5+.2)*17,x=45+i;i?c.lineTo(x,y):c.moveTo(x,y)}
+ c.stroke();c.restore();
+ /* controller board */
+ c.globalAlpha=on?1:.55;
+ rr(c,405,105,140,130,8);c.fillStyle=M.col;c.fill();c.strokeStyle='#0f172a';c.lineWidth=2;c.stroke();
+ const pl=[S.analog?M.adc:M.p[0],S.analog?'':M.p[1],M.p[2]];
+ [[135,pl[0]],[155,pl[1]],[195,pl[2]]].forEach(([y,l])=>{if(!l)return;c.fillStyle='#fbbf24';c.fillRect(401,y-3,8,6);txt(c,l,413,y+3,7.5,'#e2e8f0','left',600)});
+ if(S.analog){c.fillStyle='#fbbf24';c.fillRect(401,152,0,0)}
+ rr(c,452,128,84,66,3);c.fillStyle=M.mod;c.fill();const dk=M.mod==='#1f2937';txt(c,M.t1,494,158,M.t1.length>6?11:13,dk?'#f8fafc':NV,'center',800);txt(c,M.t2,494,172,8,dk?'#cbd5e1':'#475569','center',600);
+ if(M.wifi){c.strokeStyle='#f59e0b';c.lineWidth=1.8;c.beginPath();c.moveTo(456,122);for(let i=0;i<8;i++){c.lineTo(456+i*10,i%2?112:122)}c.stroke()}
+ else txt(c,'no Wi-Fi',494,118,8.5,'#fca5a5','center',700);
+ rr(c,545,205,8,16,2);c.fillStyle='#e2e8f0';c.fill();
+ const fl=on&&(RIG.flash>.2||phase===1);c.fillStyle=fl?'#22c55e':on?'#166534':'#475569';c.beginPath();c.arc(530,224,4,0,7);c.fill();
+ rr(c,413,210,100,12,3);c.fillStyle='rgba(0,0,0,.35)';c.fill();rr(c,413,210,Math.max(6,100*samp),12,3);c.fillStyle='#38bdf8';c.fill();
+ txt(c,on?Math.round(samp*2048)+' / 2048':'idle',463,219,8,'#fff','center',700);
+ c.globalAlpha=1;
+ txt(c,on?M.name+' · fs '+FSE(M,S)+' Hz · '+Math.round(rpm)+' rpm':'press Connect',475,252,9.5,'#475569','center',600);
+ if(on&&phase>=1&&phase<3||pk>=0){txt(c,'{"id":"'+M.id+'","fs":'+FSE(M,S)+',"rpm":'+Math.round(rpm)+',"x":[…]}',475,266,8,'#1d4ed8','center',600)}
+ /* routes */
+ const bU=route==='USB',bW=route==='WIFI';
+ line(c,P.USB,bU?BR:'#cbd5e1',bU?3:1.6,bU?null:[5,5]);
+ c.globalAlpha=M.wifi?1:.3;line(c,P.WIFI,bW?BR:'#cbd5e1',bW?3:1.6,bW?null:[5,5]);c.globalAlpha=1;
+ txt(c,'USB cable',680,278,10,bU?BR:GR,'center',600);
+ /* wifi arcs */
+ if(bW&&on&&(pk>=0||phase===1)){for(let i=0;i<3;i++){const ph=((RIG.clk*1.6+i/3)%1);c.strokeStyle='rgba(37,99,235,'+(1-ph)*.8+')';c.lineWidth=2;c.beginPath();c.arc(475,104,6+ph*22,Math.PI*1.15,Math.PI*1.85);c.stroke()}}
+ /* broker */
+ c.globalAlpha=M.wifi?1:.3;
+ rr(c,620,26,120,68,8);c.fillStyle='#fff';c.fill();c.strokeStyle=bW?BR:'#cbd5e1';c.lineWidth=bW?2:1.4;c.stroke();
+ for(let i=0;i<3;i++){rr(c,634,36+i*16,40,11,2);c.fillStyle=bW?'#dbeafe':'#f1f5f9';c.fill();c.fillStyle=bW&&on?(RIG.flash>.2||pk>=0?'#22c55e':'#86efac'):'#cbd5e1';c.beginPath();c.arc(682,41.5+i*16,2.5,0,7);c.fill()}
+ txt(c,'MQTT broker',690,52,9.5,NV,'left',700);txt(c,'vibramot/…',690,66,8,'#64748b','left',500);c.globalAlpha=1;
+ /* packet */
+ if(pk>=0){const path=bU?P.USB:P.WIFI,q=at(path,pk);c.save();c.shadowColor=BR;c.shadowBlur=10;rr(c,q[0]-15,q[1]-9,30,18,4);c.fillStyle=BR;c.fill();c.restore();txt(c,'{ }',q[0],q[1]+4,10.5,'#fff','center',800)}
+ /* laptop */
+ rr(c,810,125,150,100,6);c.fillStyle='#0f172a';c.fill();c.strokeStyle=RIG.flash>.05?'rgba(34,197,94,'+RIG.flash+')':'#334155';c.lineWidth=RIG.flash>.05?3.5:2;c.stroke();
+ rr(c,818,132,134,86,3);c.fillStyle='#f8fafc';c.fill();
+ txt(c,'VIBRAMOT',826,145,8.5,BR,'left',800);
+ if(LV.magS&&on){const m=LV.magS,o=LV.o,df=o.fs/N,fm=Math.min(o.fs/2,Math.max(o.rpm/60*8,160)),km=Math.floor(fm/df),mx=Math.max(...m.slice(1,km),.7)*1.1;c.strokeStyle=BR;c.lineWidth=1.2;c.beginPath();for(let k=1;k<km;k++){const x=824+k/km*122,y=196-m[k]/mx*40;k>1?c.lineTo(x,y):c.moveTo(x,y)}c.stroke();
+  txt(c,LV.detName?'FAULT: '+LV.detName:'NORMAL',885,212,8,LV.detName?RD:OK,'center',800)}
+ else txt(c,on?'waiting for packet…':'no data',885,180,8.5,'#94a3b8','center',600);
+ c.fillStyle='#cbd5e1';rr(c,794,225,182,10,3);c.fill();
+ /* captions */
+ txt(c,'MOTOR UNDER TEST (slowed 10×)',165,300,10,'#64748b','center',700);txt(c,'SENSOR NODE',475,300,10,'#64748b','center',700);txt(c,'TRANSPORT',680,300,10,'#64748b','center',700);txt(c,'LAPTOP / BROWSER',885,260,10,'#64748b','center',700);
+ if(!on){rr(c,380,306,240,26,13);c.fillStyle='#fff';c.fill();c.strokeStyle='#cbd5e1';c.stroke();txt(c,'Rig is powered off · press Connect',500,323,11,'#475569','center',600)}
+}
+requestAnimationFrame(frame);
+/* immediate reaction to control changes */
+function kick(base){if(LV.on&&LV.src==='demo'){if(base)rigBase();RIG.t=2.1;RIG.fired=false}}
+lv('lvDemoF').addEventListener('change',()=>kick(false));
+lv('rigSev').addEventListener('input',()=>{lv('rigSevV').textContent=(+lv('rigSev').value).toFixed(2)});
+lv('rigSev').addEventListener('change',()=>kick(false));
+lv('rigRpm').addEventListener('input',()=>{lv('rigRpmV').textContent=lv('rigRpm').value+' RPM'});
+lv('rigRpm').addEventListener('change',()=>kick(true));
+/* ===== Real firmware generator (one sketch per board + sensor) ===== */
+const FWB={
+ esp32:{name:'ESP32 DevKit',file:'vibramot_esp32.ino',pkg:'Arduino IDE, board "ESP32 Dev Module" (package "esp32" by Espressif Systems, from Boards Manager).',inc:'#include <WiFi.h>',attr:'IRAM_ATTR',sda:'GPIO21',scl:'GPIO22',tacho:'GPIO4',tpin:'4',adc:'GPIO34 (ADC1)',apin:'34',bus:'Wire.begin(21, 22);   // SDA = GPIO21, SCL = GPIO22',adcInit:'analogReadResolution(12);',baud:921600,yld:''},
+ esp8266:{name:'ESP8266 NodeMCU',file:'vibramot_esp8266.ino',pkg:'Arduino IDE, board "NodeMCU 1.0 (ESP-12E Module)" (package "esp8266" by ESP8266 Community).',inc:'#include <ESP8266WiFi.h>',attr:'IRAM_ATTR',sda:'D2 (GPIO4)',scl:'D1 (GPIO5)',tacho:'D5 (GPIO14)',tpin:'D5',adc:'A0 (the board divides 3.3 V down to the 1 V ADC range)',apin:'A0',bus:'Wire.begin(4, 5);   // D2 = GPIO4 (SDA), D1 = GPIO5 (SCL)',adcInit:'',baud:921600,yld:'yield();'},
+ pico:{name:'Raspberry Pi Pico W',file:'vibramot_pico_w.ino',pkg:'Arduino IDE with the package "Raspberry Pi Pico/RP2040/RP2350" by Earle F. Philhower III, board "Raspberry Pi Pico W".',inc:'#include <WiFi.h>',attr:'',sda:'GP4 (pin 6)',scl:'GP5 (pin 7)',tacho:'GP2 (pin 4)',tpin:'2',adc:'GP26 (pin 31)',apin:'26',bus:'Wire.setSDA(4);\n  Wire.setSCL(5);\n  Wire.begin();',adcInit:'analogReadResolution(12);',baud:921600,yld:''},
+ stm32:{name:'STM32 Blue Pill',file:'vibramot_stm32.ino',pkg:'Arduino IDE with the package "STM32 MCU based boards" (STMicroelectronics). Board "Generic STM32F1 series", part "BluePill F103C8", USB support "CDC (generic Serial supersede U(S)ART)", upload with an ST-Link.',inc:'',attr:'',sda:'PB7',scl:'PB6',tacho:'PA8',tpin:'PA8',adc:'PA1',apin:'PA1',bus:'Wire.setSDA(PB7);\n  Wire.setSCL(PB6);\n  Wire.begin();',adcInit:'analogReadResolution(12);',baud:921600,yld:''},
+ uno:{name:'Arduino Uno',file:'vibramot_uno.ino',pkg:'Arduino IDE, board "Arduino Uno". No extra libraries.',sda:'A4',scl:'A5',tacho:'D2 (interrupt INT0)',adc:'A0',baud:250000},
+ pi4:{name:'Raspberry Pi 4',file:'vibramot_pi4.py',pkg:'Raspberry Pi OS. Turn on I2C with "sudo raspi-config" (Interface Options).',sda:'GPIO2 (pin 3)',scl:'GPIO3 (pin 5)',tacho:'GPIO17 (pin 11)',adc:'ADS1115 channel A0 on the same I2C bus'}
+};
+const FWS={
+ adxl345:{lim:'ADXL345 output rate is 3200 Hz',addr:'0x53',
+  cpp:String.raw`const uint8_t ADXL = 0x53;
+void wr(uint8_t r, uint8_t v) { Wire.beginTransmission(ADXL); Wire.write(r); Wire.write(v); Wire.endTransmission(); }
+void sensorInit() {
+  Wire.setClock(400000);
+  wr(0x2D, 0x08);   // measure mode
+  wr(0x31, 0x08);   // full resolution, +-2 g
+  wr(0x2C, 0x0F);   // output rate 3200 Hz, bandwidth 1600 Hz
+}
+int16_t sensorRead() {   // Z axis, raw counts (the page removes the 1 g offset)
+  Wire.beginTransmission(ADXL); Wire.write(0x36); Wire.endTransmission(false);
+  Wire.requestFrom(ADXL, (uint8_t)2);
+  int16_t lo = Wire.read(), hi = Wire.read();
+  return (hi << 8) | (lo & 0xFF);
+}`,
+  py:String.raw`ADDR = 0x53
+def sensor_init():
+    bus.write_byte_data(ADDR, 0x2D, 0x08)   # measure mode
+    bus.write_byte_data(ADDR, 0x31, 0x08)   # full resolution, +-2 g
+    bus.write_byte_data(ADDR, 0x2C, 0x0F)   # output rate 3200 Hz
+def read_sample():                          # Z axis, raw counts
+    d = bus.read_i2c_block_data(ADDR, 0x36, 2)
+    v = d[0] | (d[1] << 8)
+    return v - 65536 if v > 32767 else v`},
+ mpu6050:{lim:'the MPU6050 accelerometer output rate is 1 kHz (bandwidth about 260 Hz)',addr:'0x68',
+  cpp:String.raw`const uint8_t MPU = 0x68;   // AD0 low
+void wr(uint8_t r, uint8_t v) { Wire.beginTransmission(MPU); Wire.write(r); Wire.write(v); Wire.endTransmission(); }
+void sensorInit() {
+  Wire.setClock(400000);
+  wr(0x6B, 0x00);   // wake up
+  wr(0x1A, 0x00);   // no extra low-pass filter
+  wr(0x1C, 0x00);   // +-2 g
+}
+int16_t sensorRead() {   // Z axis, raw counts
+  Wire.beginTransmission(MPU); Wire.write(0x3F); Wire.endTransmission(false);
+  Wire.requestFrom(MPU, (uint8_t)2);
+  int16_t hi = Wire.read(), lo = Wire.read();
+  return (hi << 8) | (lo & 0xFF);
+}`,
+  py:String.raw`ADDR = 0x68
+def sensor_init():
+    bus.write_byte_data(ADDR, 0x6B, 0x00)   # wake up
+    bus.write_byte_data(ADDR, 0x1A, 0x00)   # no extra low-pass filter
+    bus.write_byte_data(ADDR, 0x1C, 0x00)   # +-2 g
+def read_sample():                          # Z axis, raw counts
+    d = bus.read_i2c_block_data(ADDR, 0x3F, 2)
+    v = (d[0] << 8) | d[1]
+    return v - 65536 if v > 32767 else v`},
+ lis3dh:{lim:'the LIS3DH output rate is 1344 Hz in high-resolution mode',addr:'0x18',
+  cpp:String.raw`const uint8_t LIS = 0x18;   // 0x19 if the SDO/SA0 pin is high
+void wr(uint8_t r, uint8_t v) { Wire.beginTransmission(LIS); Wire.write(r); Wire.write(v); Wire.endTransmission(); }
+void sensorInit() {
+  Wire.setClock(400000);
+  wr(0x20, 0x97);   // 1344 Hz, X/Y/Z enabled
+  wr(0x23, 0x88);   // block data update, high resolution, +-2 g
+}
+int16_t sensorRead() {   // Z axis, 12-bit value
+  Wire.beginTransmission(LIS); Wire.write(0xAC); Wire.endTransmission(false);   // OUT_Z_L with auto-increment
+  Wire.requestFrom(LIS, (uint8_t)2);
+  int16_t lo = Wire.read(), hi = Wire.read();
+  return (int16_t)((hi << 8) | (lo & 0xFF)) >> 4;
+}`,
+  py:String.raw`ADDR = 0x18                                 # 0x19 if SDO/SA0 is high
+def sensor_init():
+    bus.write_byte_data(ADDR, 0x20, 0x97)   # 1344 Hz, X/Y/Z enabled
+    bus.write_byte_data(ADDR, 0x23, 0x88)   # block data update, high resolution, +-2 g
+def read_sample():                          # Z axis, 12-bit value
+    d = bus.read_i2c_block_data(ADDR, 0xAC, 2)
+    v = d[0] | (d[1] << 8)
+    if v > 32767: v -= 65536
+    return v >> 4`},
+ adxl335:{lim:'the ADXL335 X/Y bandwidth is about 1.6 kHz with a 0.0027 uF capacitor on the output',analog:1},
+ piezo:{lim:'a piezo channel is limited only by your ADC',analog:1}
+};
+function fwBuild(mk,sk,fs){
+ const b=FWB[mk],s=FWS[sk],M=MCU[mk],S=SEN[sk],tail='// FS is the lower of the board and sensor limits: '+s.lim+'.';
+ const pw=sk==='adxl335'?'Power the ADXL335 from 3.3 V and fit a 0.0027 uF capacitor on XOUT for 1.6 kHz bandwidth.':sk==='piezo'?'Wire the piezo disc to an op-amp (or the amplifier module) and bias its output to mid-supply (about 1.65 V) so both swings stay inside the ADC range.':'Power the sensor from 3.3 V (a breakout with its own regulator is fine on 5 V boards).';
+ let wiring=(s.analog?'Sensor output → '+b.adc+'. ':'Sensor SDA → '+b.sda+', SCL → '+b.scl+'. ')+'IR or hall tachometer output → '+b.tacho+' (one pulse per turn, reflective tape on the shaft). All grounds common. '+pw;
+ let code='',use='';
+ if(mk==='uno'){
+  const adc=s.analog?'int16_t sensorRead() { return analogRead(A0); }   // 10-bit, DC offset removed by the page':null;
+  code='// VIBRAMOT sensor node: Arduino Uno + '+S.name+'\n// The Uno has only 2 KB of RAM, so it cannot hold 2048 samples.\n// It sends every sample as soon as it is measured; the page still gets one JSON line per window.\n'+(s.analog?'':'#include <Wire.h>\n')+'\nconst int   FS = '+fs+';             // sampling rate in Hz\n'+tail+'\nconst int   CH = 2048;             // samples per packet\nconst float N_BALLS = 9, DD = 0.2; // bearing geometry: balls and d/D, from your datasheet\nconst char* ID = "uno-motor-01";\n#define TACHO 2                    // one pulse per shaft turn (INT0)\n\nvolatile unsigned long lastPulse = 0, period = 0;\nvoid onPulse() {\n  unsigned long t = micros();\n  if (t - lastPulse > 2000UL) { period = t - lastPulse; lastPulse = t; }   // 2 ms debounce\n}\n\n// ---- sensor: '+S.name+' ----\n'+(s.analog?'void sensorInit() { pinMode(A0, INPUT); }\n'+adc:s.cpp)+'\n\nvoid setup() {\n  Serial.begin(250000);            // set the same baud rate on the page\n'+(s.analog?'':'  Wire.begin();\n')+'  sensorInit();\n  pinMode(TACHO, INPUT_PULLUP);\n  attachInterrupt(digitalPinToInterrupt(TACHO), onPulse, FALLING);\n}\n\nvoid loop() {\n  noInterrupts(); unsigned long p = period, l = lastPulse; interrupts();\n  unsigned long rpm = (p && micros() - l < 1500000UL) ? 60000000UL / p : 0;   // 0 = page estimates rpm\n  Serial.print(F("{\\"id\\":\\"")); Serial.print(ID);\n  Serial.print(F("\\",\\"fs\\":")); Serial.print(FS);\n  Serial.print(F(",\\"rpm\\":")); Serial.print(rpm);\n  Serial.print(F(",\\"n\\":")); Serial.print(N_BALLS, 0);\n  Serial.print(F(",\\"dd\\":")); Serial.print(DD, 2);\n  Serial.print(F(",\\"x\\":["));\n  unsigned long next = micros();\n  for (int i = 0; i < CH; i++) {\n    while ((long)(micros() - next) < 0) {}\n    next += 1000000UL / FS;\n    Serial.print(sensorRead());\n    Serial.print(i < CH - 1 ? \',\' : \']\');\n  }\n  Serial.println(\'}\');\n}\n';
+  use='On the page: choose "USB serial", set the baud rate to 250000, press Connect and pick the Uno port.';
+ } else if(mk==='pi4'){
+  const sens=s.analog?String.raw`import board, busio
+import adafruit_ads1x15.ads1115 as ADS
+from adafruit_ads1x15.analog_in import AnalogIn
+from adafruit_ads1x15.ads1x15 import Mode
+ads = ADS.ADS1115(busio.I2C(board.SCL, board.SDA))
+ads.data_rate = 860
+ads.mode = Mode.CONTINUOUS
+chan = AnalogIn(ads, ADS.P0)
+def sensor_init(): pass
+def read_sample(): return chan.value        # DC offset is removed by the page`:'import smbus2\nbus = smbus2.SMBus(1)\n'+s.py;
+  code='#!/usr/bin/env python3\n# VIBRAMOT sensor node: Raspberry Pi 4 + '+S.name+'\n# Install: pip3 install paho-mqtt pyserial '+(s.analog?'adafruit-circuitpython-ads1x15':'smbus2')+'\n# Run:     python3 vibramot_pi4.py\nimport json, time\nimport RPi.GPIO as GPIO\n\nUSE_MQTT = True        # True = Wi-Fi + MQTT, False = USB serial gadget (/dev/ttyGS0)\nBROKER, PORT = "broker.hivemq.com", 1883\nTOPIC = "vibramot/motor-01/vibration"\nID = "pi4-motor-01"\nFS = '+fs+'              # target sampling rate in Hz; the real rate is measured and sent\n'+(s.analog?'# FS is limited by the ADS1115 (860 samples/s) and by Python timing.':'# FS is limited by '+s.lim+' and by Python timing.')+'\nCH = 2048             # samples per packet\nN_BALLS, DD = 9, 0.2  # bearing geometry: balls and d/D, from your datasheet\nTACHO = 17            # BCM number, one pulse per shaft turn\n\n# ---- sensor: '+S.name+' ----\n'+sens+'\n\n# ---- tachometer ----\nlast, period = 0.0, 0.0\ndef on_pulse(channel):\n    global last, period\n    t = time.perf_counter()\n    if t - last > 0.002:           # 2 ms debounce\n        period, last = t - last, t\nGPIO.setmode(GPIO.BCM)\nGPIO.setup(TACHO, GPIO.IN, pull_up_down=GPIO.PUD_UP)\nGPIO.add_event_detect(TACHO, GPIO.FALLING, callback=on_pulse)\ndef read_rpm():\n    return round(60.0 / period) if period and time.perf_counter() - last < 1.5 else 0   # 0 = page estimates rpm\n\n# ---- link to the page ----\nif USE_MQTT:\n    import paho.mqtt.client as mqtt\n    try:\n        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)\n    except AttributeError:\n        client = mqtt.Client()\n    client.connect(BROKER, PORT)\n    client.loop_start()\n    def send(text): client.publish(TOPIC, text)\nelse:\n    import serial\n    link = serial.Serial("/dev/ttyGS0", 921600)\n    def send(text): link.write((text + "\\n").encode())\n\ndef sample_window():\n    x = [0] * CH\n    step = 1.0 / FS\n    t0 = t = time.perf_counter()\n    for i in range(CH):\n        t += step\n        while time.perf_counter() < t:\n            pass\n        x[i] = read_sample()\n    return x, round(CH / (time.perf_counter() - t0))\n\nsensor_init()\ntry:\n    while True:\n        x, fs = sample_window()\n        send(json.dumps({"id": ID, "fs": fs, "rpm": read_rpm(), "n": N_BALLS, "dd": DD, "x": x}, separators=(",", ":")))\nfinally:\n    GPIO.cleanup()\n';
+  use='On the page: choose "MQTT over WebSocket" and use the same topic. For USB serial instead, set USE_MQTT = False and enable the Pi 4 USB-C gadget port (add dtoverlay=dwc2 to config.txt and modules-load=dwc2,g_serial to cmdline.txt).';
+ } else {
+  const wifi=M.wifi, ad=s.analog;
+  const sens=ad?'#define ADC_PIN '+b.apin+'\nvoid sensorInit() { pinMode(ADC_PIN, INPUT); }\nint16_t sensorRead() { return analogRead(ADC_PIN); }   // DC offset is removed by the page':s.cpp;
+  const busInit=ad?b.adcInit:b.bus;
+  code='// VIBRAMOT sensor node: '+b.name+' + '+S.name+'\n// Sends one JSON packet per 2048-sample window to the VIBRAMOT IoT Live page.\n'+(ad?'':'#include <Wire.h>\n')+(wifi?'\n#define USE_MQTT 0   // 0 = USB serial, 1 = Wi-Fi + MQTT\n#if USE_MQTT\n  '+b.inc+'\n  #include <PubSubClient.h>\n  const char* WIFI_SSID = "YOUR_WIFI";\n  const char* WIFI_PASS = "YOUR_PASSWORD";\n  const char* BROKER    = "broker.hivemq.com";   // the page connects to it over WebSocket\n  const char* TOPIC     = "vibramot/motor-01/vibration";\n#endif\n':'')+'\nconst int   FS = '+fs+';             // sampling rate in Hz\n'+tail+'\nconst int   CH = 2048;             // samples per packet\nconst float N_BALLS = 9, DD = 0.2; // bearing geometry: balls and d/D, from your datasheet\nconst char* ID = "'+M.id+'";\n#define TACHO '+b.tpin+'                    // one pulse per shaft turn\n'+(b.attr?'#define ISR_ATTR '+b.attr+'\n':'#define ISR_ATTR\n')+'\nvolatile uint32_t lastPulse = 0, period = 0;\nvoid ISR_ATTR onPulse() {\n  uint32_t t = micros();\n  if (t - lastPulse > 2000) { period = t - lastPulse; lastPulse = t; }   // 2 ms debounce\n}\nlong readRpm() {\n  if (period == 0 || micros() - lastPulse > 1500000UL) return 0;        // stopped: the page estimates rpm\n  return (long)(60e6 / period);\n}\n\n// ---- sensor: '+S.name+' ----\n'+sens+'\n\n// ---- sampling ----\nstatic int16_t x[CH];\nvoid sampleWindow() {\n  uint32_t next = micros();\n  for (int i = 0; i < CH; i++) {\n    while ((int32_t)(micros() - next) < 0) {}\n    next += 1000000UL / FS;\n    x[i] = sensorRead();\n'+(b.yld?'    '+b.yld+'\n':'')+'  }\n}\n\n// ---- send over USB serial ----\nvoid sendSerial(long rpm) {\n  Serial.print(F("{\\"id\\":\\"")); Serial.print(ID);\n  Serial.print(F("\\",\\"fs\\":")); Serial.print(FS);\n  Serial.print(F(",\\"rpm\\":")); Serial.print(rpm);\n  Serial.print(F(",\\"n\\":")); Serial.print(N_BALLS, 0);\n  Serial.print(F(",\\"dd\\":")); Serial.print(DD, 2);\n  Serial.print(F(",\\"x\\":["));\n  for (int i = 0; i < CH; i++) { Serial.print(x[i]); Serial.print(i < CH - 1 ? \',\' : \']\'); }\n  Serial.println(\'}\');\n}\n'+(wifi?'\n#if USE_MQTT\nWiFiClient net;\nPubSubClient mqtt(net);\nstatic char msg[16000];\nvoid mqttEnsure() {\n  if (WiFi.status() != WL_CONNECTED) {\n    WiFi.begin(WIFI_SSID, WIFI_PASS);\n    while (WiFi.status() != WL_CONNECTED) delay(300);\n  }\n  while (!mqtt.connected()) { if (!mqtt.connect(ID)) delay(1000); }\n}\nvoid sendMqtt(long rpm) {\n  mqttEnsure();\n  int n = snprintf(msg, sizeof msg, "{\\"id\\":\\"%s\\",\\"fs\\":%d,\\"rpm\\":%ld,\\"n\\":%.0f,\\"dd\\":%.2f,\\"x\\":[", ID, FS, rpm, N_BALLS, DD);\n  for (int i = 0; i < CH && n < (int)sizeof msg - 12; i++)\n    n += snprintf(msg + n, sizeof msg - n, "%d%c", x[i], i < CH - 1 ? \',\' : \']\');\n  n += snprintf(msg + n, sizeof msg - n, "}");\n  mqtt.publish(TOPIC, (const uint8_t*)msg, n);\n  mqtt.loop();\n}\n#endif\n':'')+'\nvoid setup() {\n  Serial.begin('+b.baud+');   // set the same baud rate on the page\n  '+busInit+'\n  sensorInit();\n  pinMode(TACHO, INPUT_PULLUP);\n  attachInterrupt(digitalPinToInterrupt(TACHO), onPulse, FALLING);\n'+(wifi?'#if USE_MQTT\n  mqtt.setServer(BROKER, 1883);\n  mqtt.setBufferSize(16000);\n#endif\n':'')+'}\n\nvoid loop() {\n  sampleWindow();\n  long rpm = readRpm();\n'+(wifi?'#if USE_MQTT\n  sendMqtt(rpm);\n#else\n  sendSerial(rpm);\n#endif\n':'  sendSerial(rpm);\n')+'}\n';
+  use=wifi?'On the page: for USB, choose "USB serial", keep USE_MQTT at 0, press Connect and pick the port. For Wi-Fi, set your network, set USE_MQTT to 1, then choose "MQTT over WebSocket" with the same topic (the library needs PubSubClient by Nick O\'Leary).':'On the page: choose "USB serial", press Connect and pick the board\'s port. The Blue Pill has no Wi-Fi; to go wireless, add an ESP-01 or use another board.';
+ }
+ return{file:b.file,code:code,info:'<b>Setup:</b> '+b.pkg+'<br><b>Wiring:</b> '+wiring+'<br><b>Sampling:</b> '+fs+' Hz, 2048 samples per packet. '+use};
+}
+function fwUpdate(){
+ const mk=lv('rigMcu').value,sk=lv('rigSen').value,M=MCU[mk],S=SEN[sk],fs=FSE(M,S),r=fwBuild(mk,sk,fs);
+ lv('fwSum').textContent='Sketch for '+M.name+' + '+S.t+' ('+(mk==='pi4'?'Python':'Arduino IDE')+')';
+ lv('fwInfo').innerHTML=r.info;lv('lvFw').textContent=r.code;lv('fwDl').dataset.file=r.file;
+ const bd=lv('lvBaud');if(bd&&FWB[mk].baud)bd.value=String(FWB[mk].baud)}
+lv('fwCopy').onclick=async()=>{try{await navigator.clipboard.writeText(lv('lvFw').textContent);lv('fwCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents(lv('lvFw'));const g=getSelection();g.removeAllRanges();g.addRange(r);lv('fwCopy').textContent='Selected: press Ctrl+C'}setTimeout(()=>lv('fwCopy').textContent='Copy sketch',1800)};
+lv('fwDl').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lv('lvFw').textContent],{type:'text/plain'}));a.download=lv('fwDl').dataset.file||'vibramot.ino';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+/* ===== Board and sensor pictures with pinouts ===== */
+const TINT={p:['#fed7aa','#7c2d12'],g:['#e5e7eb','#111827'],a:['#bbf7d0','#14532d'],i:['#ddd6fe','#4c1d95'],u:['#fde68a','#713f12'],r:['#fecdd3','#881337'],n:['#f1f5f9','#94a3b8'],o:['#e2e8f0','#334155']};
+const ROLEC={sda:'#7c3aed',scl:'#2563eb',tach:'#d97706',adc:'#16a34a',vcc:'#ea580c',gnd:'#111827'},ROLEN={sda:'SDA',scl:'SCL',tach:'TACHO',adc:'ADC IN',vcc:'POWER',gnd:'GND'};
+const PS=s=>s.split(',').map(x=>{const a=x.trim().split('|');return{l:a[0],t:a[1]||'o',r:a[2]||''}});
+const PINS={
+ esp32:{L:PS('EN|r,VP 36|a,VN 39|a,D34|a|adc,D35|a,D32|a,D33|a,D25,D26,D27,D14,D12,D13,GND|g,VIN|p'),R:PS('D23,D22|i|scl,TX0|u,RX0|u,D21|i|sda,D19,D18,D5,TX2|u,RX2|u,D4|o|tach,D2,D15,GND|g|gnd,3V3|p|vcc')},
+ esp8266:{L:PS('A0|a|adc,RSV|n,RSV|n,SD3,SD2,SD1,CMD,SD0,CLK,GND|g,3V3|p,EN|r,RST|r,GND|g,VIN|p'),R:PS('D0,D1 GPIO5|i|scl,D2 GPIO4|i|sda,D3,D4,3V3|p|vcc,GND|g|gnd,D5 GPIO14|o|tach,D6,D7,D8,RX|u,TX|u,GND|g,3V3|p')},
+ pico:{L:PS('GP0 1|u,GP1 2|u,GND 3|g,GP2 4|o|tach,GP3 5,GP4 6|i|sda,GP5 7|i|scl,GND 8|g,GP6 9,GP7 10,GP8 11,GP9 12,GND 13|g,GP10 14,GP11 15,GP12 16,GP13 17,GND 18|g,GP14 19,GP15 20'),R:PS('VBUS 40|p,VSYS 39|p,GND 38|g|gnd,3V3_EN 37|r,3V3 36|p|vcc,ADC_VREF 35|a,GP28 34|a,AGND 33|g,GP27 32|a,GP26 31|a|adc,RUN 30|r,GP22 29,GND 28|g,GP21 27,GP20 26,GP19 25,GP18 24,GND 23|g,GP17 22,GP16 21')},
+ stm32:{L:PS('B12,B13,B14,B15,A8|o|tach,A9|u,A10|u,A11,A12,A15,B3,B4,B5,B6|i|scl,B7|i|sda,B8,B9,5V|p,GND|g|gnd,3V3|p|vcc'),R:PS('GND|g,GND|g,3V3|p,R|r,B11|u,B10|u,B1|a,B0|a,A7|a,A6|a,A5,A4|a,A3|a,A2|a,A1|a|adc,A0|a,C15,C14,C13,VB|p')},
+ pi4:{E:PS('5V 2|p,5V 4|p,GND 6|g|gnd,TXD 8|u,RXD 10|u,GPIO18 12,GND 14|g,GPIO23 16,GPIO24 18,GND 20|g,GPIO25 22,GPIO8 24,GPIO7 26,ID_SC 28,GND 30|g,GPIO12 32,GND 34|g,GPIO16 36,GPIO20 38,GPIO21 40'),O:PS('3V3 1|p|vcc,GPIO2 3|i|sda,GPIO3 5|i|scl,GPIO4 7,GND 9|g,GPIO17 11|o|tach,GPIO27 13,GPIO22 15,3V3 17|p,MOSI 19,MISO 21,SCLK 23,GND 25|g,ID_SD 27,GPIO5 29,GPIO6 31,GPIO13 33,GPIO19 35,GPIO26 37,GND 39|g')},
+ uno:{T:PS('SCL|i|scl,SDA|i|sda,AREF,GND|g|gnd,13,12,11,10,9,8,7,6,5,4,3,2|o|tach,TX 1|u,RX 0|u'),B:PS('NC|n,IOREF|p,RESET|r,3V3|p|vcc,5V|p,GND|g|gnd,GND|g,VIN|p,A0|a|adc,A1|a,A2|a,A3|a,A4|i,A5|i')}
+};
+function R_(x,y,w,h,f,rx,s){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(rx||0)+'" fill="'+f+'"'+(s?' stroke="'+s+'" stroke-width="1.2"':'')+'/>'}
+function T_(x,y,t,sz,f,a,wt){return '<text x="'+x+'" y="'+y+'" font-size="'+sz+'" fill="'+f+'" text-anchor="'+(a||'start')+'" font-weight="'+(wt||600)+'" font-family="Inter,system-ui,sans-serif">'+t+'</text>'}
+function meander(x,y,w,h,n){let d='M'+x+' '+(y+h);const s=w/n;for(let i=0;i<n;i++){d+=' L'+(x+i*s)+' '+(i%2?y+h:y)+' L'+(x+(i+1)*s)+' '+(i%2?y+h:y)}return '<path d="'+d+'" stroke="#d4a017" stroke-width="2.4" fill="none"/>'}
+function pillW(t){return Math.max(28,t.length*6+14)}
+function pillSvg(t,p,act,anchor){ /* returns svg group at origin; anchor 'end' draws leftwards */
+ const on=p.r&&act[p.r],suf=on&&p.r!=='gnd'?' · '+ROLEN[p.r]:'',w=pillW(t+suf),tx=TINT[p.t]||TINT.o,x0=anchor==='end'?-w:0,txt=t+suf;
+ return '<rect x="'+x0+'" y="-8.5" width="'+w+'" height="17" rx="8.5" fill="'+(on?ROLEC[p.r]:tx[0])+'"'+(on?' stroke="#facc15" stroke-width="2.2"':'')+'/>'+T_(x0+w/2,3.7,txt,10,on?'#fff':tx[1],'middle',on?800:600)}
+function pad(x,y){return '<rect x="'+(x-4.5)+'" y="'+(y-4.5)+'" width="9" height="9" rx="2" fill="#d4a017" stroke="#92400e" stroke-width=".8"/><circle cx="'+x+'" cy="'+y+'" r="1.8" fill="#1f2937"/>'}
+function vertBoard(d,act){const LW=118,W=d.w+2*LW,H=d.h+d.pt+d.pb;let s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+(d.mw||420)+'px">';
+ s+='<g transform="translate('+LW+','+d.pt+')">'+d.art;
+ d.L.forEach((p,i)=>{const y=d.y0+i*d.dy;s+=pad(9,y)});d.R.forEach((p,i)=>{const y=d.y0+i*d.dy;s+=pad(d.w-9,y)});s+='</g>';
+ d.L.forEach((p,i)=>{const y=d.pt+d.y0+i*d.dy;s+='<line x1="'+(LW+9)+'" y1="'+y+'" x2="'+(LW-4)+'" y2="'+y+'" stroke="#94a3b8" stroke-width="1"/><g transform="translate('+(LW-5)+','+y+')">'+pillSvg(p.l,p,act,'end')+'</g>'});
+ d.R.forEach((p,i)=>{const y=d.pt+d.y0+i*d.dy;s+='<line x1="'+(LW+d.w-9)+'" y1="'+y+'" x2="'+(LW+d.w+4)+'" y2="'+y+'" stroke="#94a3b8" stroke-width="1"/><g transform="translate('+(LW+d.w+5)+','+y+')">'+pillSvg(p.l,p,act,'start')+'</g>'});
+ return s+'</svg>'}
+function rotPill(x,y,p,act,dir){return '<g transform="translate('+x+','+y+') rotate('+(dir<0?-90:90)+')">'+pillSvg(p.l,p,act,'start')+'</g>'}
+function horizBoard(d,act){let s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+d.W+' '+d.H+'" width="100%" style="max-width:'+d.mw+'px"><g transform="translate('+d.bx+','+d.by+')">'+d.art+'</g>';
+ d.rows.forEach(r=>{r.pins.forEach((p,i)=>{const x=d.bx+r.x0+i*(r.pitch||20.3)+(r.gapAt&&i>=r.gapAt?r.gap:0),y=d.by+r.y;s+=pad(x,y)+rotPill(x,y+(r.dir<0?-9:9),p,act,r.dir)})});
+ return s+'</svg>'}
+const BOARDART={
+ esp32:'<g>'+R_(0,0,150,396,'#111827',8,'#0b1220')+R_(32,8,86,44,'#0b1220',2)+meander(38,14,74,30,9)+R_(32,52,86,68,'#cbd5e1',3,'#94a3b8')+T_(75,82,'ESP32-WROOM-32',7.5,'#334155','middle',700)+T_(75,94,'CE  FCC',6,'#64748b','middle')+R_(60,262,30,30,'#0b1220',2,'#475569')+T_(75,280,'CP2102',6,'#94a3b8','middle')+R_(100,196,20,14,'#334155',2)+'<circle cx="112" cy="238" r="3.6" fill="#ef4444"/><circle cx="40" cy="238" r="3.6" fill="#3b82f6"/>'+R_(24,338,20,18,'#e5e7eb',3)+T_(34,350,'EN',6.5,'#111827','middle',700)+R_(106,338,20,18,'#e5e7eb',3)+T_(116,350,'BOOT',5.5,'#111827','middle',700)+R_(52,374,46,28,'#cbd5e1',3,'#94a3b8')+R_(60,380,30,12,'#475569',2)+T_(75,160,'ESP32 DevKit',9,'#94a3b8','middle',700)+T_(75,172,'30-pin',7,'#64748b','middle')+'</g>',
+ esp8266:'<g>'+R_(0,0,150,396,'#1f2937',8,'#0b1220')+R_(36,8,78,36,'#0b1220',2)+meander(42,12,66,26,8)+R_(36,44,78,64,'#d1d5db',3,'#94a3b8')+T_(75,72,'ESP-12E',9,'#334155','middle',800)+T_(75,86,'ESP8266MOD',6.5,'#64748b','middle')+R_(60,252,30,30,'#0b1220',2,'#475569')+T_(75,270,'CP2102',6,'#94a3b8','middle')+R_(24,336,24,18,'#e5e7eb',3)+T_(36,348,'FLASH',5,'#111827','middle',700)+R_(102,336,24,18,'#e5e7eb',3)+T_(114,348,'RST',5.5,'#111827','middle',700)+R_(52,374,46,28,'#cbd5e1',3,'#94a3b8')+R_(60,380,30,12,'#475569',2)+T_(75,170,'NodeMCU',10,'#94a3b8','middle',800)+T_(75,182,'v1.0 (ESP8266)',6.5,'#64748b','middle')+'<circle cx="112" cy="232" r="3.4" fill="#3b82f6"/></g>',
+ pico:'<g>'+R_(0,0,147,357,'#15803d',6,'#14532d')+R_(50,-9,48,26,'#cbd5e1',3,'#94a3b8')+R_(58,-4,32,12,'#475569',2)+R_(22,34,24,14,'#e5e7eb',3)+T_(34,44,'BOOTSEL',4.6,'#111827','middle',700)+R_(52,148,44,44,'#0b1220',3,'#475569')+T_(74,168,'RP2040',7,'#cbd5e1','middle',700)+T_(74,178,'Raspberry Pi',4.6,'#94a3b8','middle')+R_(104,118,22,14,'#0b1220',2)+R_(40,262,66,52,'#cbd5e1',3,'#94a3b8')+T_(73,284,'CYW43439',6.5,'#334155','middle',800)+T_(73,294,'Wi-Fi + BT',5.5,'#64748b','middle')+meander(44,322,58,14,10)+'<circle cx="116" cy="26" r="3.2" fill="#22c55e"/>'+T_(74,108,'Pico W',11,'#bbf7d0','middle',800)+'<rect x="56" y="344" width="6" height="6" fill="#d4a017"/><rect x="71" y="344" width="6" height="6" fill="#d4a017"/><rect x="86" y="344" width="6" height="6" fill="#d4a017"/></g>',
+ stm32:'<g>'+R_(0,0,154,400,'#1e40af',6,'#172554')+R_(55,-8,44,26,'#cbd5e1',3,'#94a3b8')+R_(62,-3,30,12,'#475569',2)+R_(46,150,62,62,'#0b1220',3,'#475569')+T_(77,176,'STM32',9,'#cbd5e1','middle',800)+T_(77,188,'F103C8T6',6.5,'#94a3b8','middle')+R_(58,234,38,13,'#e5e7eb',6.5)+R_(106,62,20,16,'#e5e7eb',3)+T_(116,73,'RST',5.5,'#111827','middle',700)+'<rect x="30" y="64" width="10" height="26" fill="#facc15"/><rect x="44" y="64" width="10" height="26" fill="#facc15"/>'+T_(42,100,'BOOT0 1',5,'#bfdbfe','middle')+'<circle cx="122" cy="112" r="3.4" fill="#22c55e"/>'+T_(122,126,'PC13',5.5,'#bfdbfe','middle')+'<rect x="50" y="372" width="8" height="8" fill="#d4a017"/><rect x="64" y="372" width="8" height="8" fill="#d4a017"/><rect x="78" y="372" width="8" height="8" fill="#d4a017"/><rect x="92" y="372" width="8" height="8" fill="#d4a017"/>'+T_(75,392,'SWD',6,'#bfdbfe','middle')+T_(77,288,'Blue Pill',11,'#bfdbfe','middle',800)+'</g>',
+ pi4:R_(0,0,680,448,'#15803d',14,'#14532d')+R_(50,6,430,58,'#111827',2)+R_(284,196,76,76,'#d1d5db',4,'#94a3b8')+T_(322,232,'BCM2711',9,'#334155','middle',800)+T_(322,246,'Cortex-A72',6.5,'#64748b','middle')+R_(376,214,52,40,'#0b1220',3)+T_(402,238,'LPDDR4',7,'#94a3b8','middle')+R_(180,262,52,42,'#cbd5e1',3)+T_(206,286,'Wi-Fi',7,'#334155','middle',700)+R_(40,418,56,36,'#cbd5e1',3,'#94a3b8')+T_(68,440,'USB-C',7,'#334155','middle',700)+R_(122,426,40,26,'#111827',3)+T_(142,442,'HDMI0',6,'#cbd5e1','middle')+R_(176,426,40,26,'#111827',3)+T_(196,442,'HDMI1',6,'#cbd5e1','middle')+'<circle cx="262" cy="436" r="11" fill="#111827"/>'+T_(262,462,'AV',6,'#14532d','middle')+R_(300,416,60,18,'#f1f5f9',2)+T_(330,428,'CSI',6.5,'#334155','middle')+R_(14,200,16,100,'#111827',2)+T_(40,254,'microSD (back)',6.5,'#bbf7d0','start')+R_(584,18,106,104,'#cbd5e1',4,'#94a3b8')+T_(637,74,'Ethernet',9,'#334155','middle',700)+R_(584,144,106,86,'#2563eb',4,'#1e3a8a')+T_(637,190,'USB 3.0 x2',9,'#fff','middle',700)+R_(584,252,106,86,'#cbd5e1',4,'#94a3b8')+T_(637,298,'USB 2.0 x2',9,'#334155','middle',700)+T_(180,360,'Raspberry Pi 4 Model B',14,'#bbf7d0','start',800)+T_(60,86,'40-pin GPIO header',8,'#bbf7d0','start',600),
+ uno:R_(0,0,617,480,'#0f766e',16,'#134e4a')+R_(-14,42,92,96,'#cbd5e1',4,'#94a3b8')+T_(32,92,'USB-B',9,'#334155','middle',700)+R_(-14,330,92,86,'#111827',4)+T_(32,376,'DC jack',9,'#cbd5e1','middle',700)+R_(250,284,300,66,'#0b1220',4,'#475569')+T_(400,322,'ATmega328P',12,'#94a3b8','middle',800)+R_(104,150,44,44,'#0b1220',3)+T_(126,176,'16U2',7.5,'#94a3b8','middle',700)+R_(176,160,34,14,'#e5e7eb',7)+R_(86,226,22,18,'#fca5a5',3)+T_(97,258,'RESET',6.5,'#ccfbf1','middle')+T_(340,200,'ARDUINO UNO',22,'#99f6e4','middle',800)+T_(340,222,'R3',13,'#5eead4','middle',700)+'<circle cx="540" cy="236" r="4" fill="#22c55e"/><circle cx="560" cy="236" r="4" fill="#f59e0b"/>'+T_(240,70,'DIGITAL',9,'#99f6e4','start',700)+T_(300,440,'ANALOG IN',9,'#99f6e4','start',700)+T_(262,440,'POWER',9,'#99f6e4','end',700)
+};
+function boardSvg(mk,act){
+ if(mk==='pi4'){const e=PINS.pi4.E,o=PINS.pi4.O;return horizBoard({W:720,H:600,bx:20,by:112,mw:760,art:BOARDART.pi4,rows:[{pins:e,x0:64,y:26,pitch:20.3,dir:-1},{pins:o,x0:64,y:46,pitch:20.3,dir:1}]},act)}
+ if(mk==='uno'){return horizBoard({W:657,H:700,bx:20,by:122,mw:760,art:BOARDART.uno,rows:[{pins:PINS.uno.T.slice(0,10),x0:196,y:26,pitch:22.9,dir:-1},{pins:PINS.uno.T.slice(10),x0:196+10*22.9+12,y:26,pitch:22.9,dir:-1},{pins:PINS.uno.B.slice(0,8),x0:262,y:454,pitch:22.9,dir:1},{pins:PINS.uno.B.slice(8),x0:262+8*22.9+14,y:454,pitch:22.9,dir:1}]},act)}
+ const P=PINS[mk];
+ const dd={esp32:{w:150,h:396,y0:46,dy:22},esp8266:{w:150,h:396,y0:46,dy:22},pico:{w:147,h:357,y0:34,dy:17.8,mw:440},stm32:{w:154,h:400,y0:24,dy:18.4,mw:440}}[mk];
+ return vertBoard({w:dd.w,h:dd.h,pt:24,pb:20,y0:dd.y0,dy:dd.dy,mw:dd.mw||400,art:BOARDART[mk],L:P.L,R:P.R},act)}
+/* sensor modules */
+const SENP={adxl345:{col:'#1e40af',chip:'ADXL345',pins:['GND','VCC','CS','INT1','INT2','SDO','SDA','SCL'],r:{GND:'gnd',VCC:'vcc',SDA:'sda',SCL:'scl'}},
+ mpu6050:{col:'#6d28d9',chip:'MPU-6050',pins:['VCC','GND','SCL','SDA','XDA','XCL','AD0','INT'],r:{VCC:'vcc',GND:'gnd',SDA:'sda',SCL:'scl'}},
+ lis3dh:{col:'#9d174d',chip:'LIS3DH',pins:['VIN','3VO','GND','SCL','SDA','SDO','CS','INT'],r:{VIN:'vcc',GND:'gnd',SDA:'sda',SCL:'scl'}},
+ adxl335:{col:'#b91c1c',chip:'ADXL335',pins:['3V3','XOUT','YOUT','ZOUT','GND','ST'],r:{'3V3':'vcc',XOUT:'adc',GND:'gnd'}},
+ piezo:{col:'#0369a1',chip:'LM358',pins:['VCC','GND','OUT'],r:{VCC:'vcc',GND:'gnd',OUT:'adc'},disc:1}};
+function sensorSvg(sk,act){const d=SENP[sk],n=d.pins.length,bw=Math.max(150,n*24+20),W=bw+(d.disc?150:20),H=d.disc?170:150;let s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+(W*1.45)+'px"><g transform="translate('+(d.disc?150:10)+',10)">';
+ s+=R_(0,0,bw,90,d.col,6)+R_(bw/2-18,20,36,36,'#0b1220',3,'#475569')+T_(bw/2,42,d.chip,6.5,'#cbd5e1','middle',700)+'<circle cx="'+(bw-12)+'" cy="12" r="3" fill="#22c55e"/>';
+ d.pins.forEach((p,i)=>{const x=14+i*((bw-28)/Math.max(1,n-1)),r=d.r[p],on=r&&act[r];s+=pad(x,80)+'<g transform="translate('+x+',92) rotate(90)"><rect x="0" y="-7" width="'+(p.length*6+10)+'" height="14" rx="7" fill="'+(on?ROLEC[r]:'#e2e8f0')+'"'+(on?' stroke="#facc15" stroke-width="2"':'')+'/>'+T_(5+p.length*3,3.4,p,9,on?'#fff':'#334155','middle',on?800:600)+'</g>'});
+ s+='</g>';
+ if(d.disc)s+='<circle cx="68" cy="70" r="52" fill="#d4a017" stroke="#92400e" stroke-width="2"/><circle cx="68" cy="70" r="36" fill="#f5d061" stroke="#b7791f"/><circle cx="68" cy="70" r="6" fill="#92400e"/>'+T_(68,140,'piezo disc',9,'#475569','middle',700)+'<path d="M118 70 H150" stroke="#475569" stroke-width="2.4"/>';
+ return s+'</svg>'}
+function pinUpdate(){const mk=lv('rigMcu').value,sk=lv('rigSen').value,M=MCU[mk],S=SEN[sk],b=FWB[mk];
+ const act=S.analog?{tach:1,adc:1,vcc:1,gnd:1}:{sda:1,scl:1,tach:1,vcc:1,gnd:1};if(mk==='pi4'){act.sda=1;act.scl=1}
+ lv('pinTitle').textContent='BOARD PINOUT · '+M.name.toUpperCase()+' + '+S.t;
+ lv('pinBoard').innerHTML=boardSvg(mk,act);lv('pinSensor').innerHTML=sensorSvg(sk,act);
+ const items=[];if(!S.analog||mk==='pi4'){items.push(['sda','Sensor SDA → '+b.sda],['scl','Sensor SCL → '+b.scl])}
+ if(S.analog)items.push(['adc','Sensor output → '+b.adc]);items.push(['tach','Tachometer → '+b.tacho],['vcc','Sensor power → 3V3 (not 5 V)'],['gnd','All grounds common']);
+ lv('pinLegend').innerHTML=items.map(i=>'<div style="display:flex;align-items:center;gap:8px;margin:6px 0"><span style="width:12px;height:12px;border-radius:50%;background:'+ROLEC[i[0]]+';flex:none;outline:2px solid #facc15"></span><span>'+i[1]+'</span></div>').join('')+'<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px">'+[['p','power'],['g','ground'],['a','analog in'],['i','I²C'],['u','UART'],['r','reset / enable'],['o','GPIO']].map(t=>'<span style="padding:2px 8px;border-radius:99px;background:'+TINT[t[0]][0]+';color:'+TINT[t[0]][1]+';font-weight:600">'+t[1]+'</span>').join('')+'</div>'}
+
+function nodeUpd(){const M=MCU[lv('rigMcu').value],S=SEN[lv('rigSen').value];RIGCFG.fs=FSE(M,S);RIGCFG.id=M.id;
+ lv('rigLegMT').textContent=M.name;lv('rigLegM').textContent=M.p[0]+', '+(S.analog?M.adc:M.p[1])+', '+M.p[2]+'. Sampling '+FSE(M,S)+' Hz. '+(M.wifi?'USB or Wi-Fi/MQTT.':'USB serial only.');
+ lv('rigLegST').textContent=S.name;lv('rigLegS').textContent=S.note;
+ lv('rigNote').textContent=M.name+' + '+S.t+': '+M.note+(S.analog?' The analog sensor goes to an ADC pin instead of the I²C bus.':'');
+ const r=lv('rigRoute');if(!M.wifi)r.value='usb';r.disabled=!M.wifi;fwUpdate();pinUpdate()}
+function nodeChg(){nodeUpd();kick(true)}
+lv('rigMcu').addEventListener('change',nodeChg);lv('rigSen').addEventListener('change',nodeChg);nodeUpd();
+})();
+</script>
+</body>
+</html>
